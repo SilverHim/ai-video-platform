@@ -76,6 +76,28 @@ export interface TaskListQuery {
   origin?: TaskOrigin;
 }
 
+/** 参数预设：某个模型某个模式下的一组参数（可选带提示词），网页与 MCP 共用 */
+export interface PresetRecord {
+  id: string;
+  name: string;
+  modelId: string;
+  modeId: string;
+  values: Record<string, unknown>;
+  prompt: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 提示词模板：文字片段，{{变量}} 在插入时填写 */
+export interface TemplateRecord {
+  id: string;
+  name: string;
+  text: string;
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** /api/events 推送的事件 */
 export type ServerEvent =
   | { type: 'task.updated'; task: TaskRecord }

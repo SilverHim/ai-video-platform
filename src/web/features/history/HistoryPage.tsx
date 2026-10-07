@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { X } from 'lucide-react';
+import { FolderOpen, Star, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -25,7 +25,15 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="mb-3 flex items-center">
         <h3 className="font-semibold">{t('history.detail')}</h3>
         <code className="ml-2 text-xs text-[var(--color-muted)]">{task.id}</code>
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={onClose}>
+        <Button size="sm" variant="ghost" className="ml-auto" title={task.favorite ? t('history.unfavorite') : t('history.favorite')} onClick={() => void api.patchTask(task.id, { favorite: !task.favorite })}>
+          <Star size={14} fill={task.favorite ? 'currentColor' : 'none'} />
+        </Button>
+        {task.results.find((r) => r.path) ? (
+          <Button size="sm" variant="ghost" title={t('history.reveal')} onClick={() => void api.reveal(task.results.find((r) => r.path)!.path!)}>
+            <FolderOpen size={14} />
+          </Button>
+        ) : null}
+        <Button size="sm" variant="ghost" onClick={onClose}>
           <X size={14} />
         </Button>
       </div>
@@ -71,8 +79,9 @@ export function HistoryPage() {
   const [params, setParams] = useSearchParams();
   const [status, setStatus] = useState('');
   const [provider, setProvider] = useState('');
+  const [onlyFav, setOnlyFav] = useState(false);
   const selected = params.get('task');
-  const list = order.map((id) => byId[id]!).filter((x) => (!status || x.status === status) && (!provider || x.providerId === provider));
+  const list = order.map((id) => byId[id]!).filter((x) => (!status || x.status === status) && (!provider || x.providerId === provider) && (!onlyFav || x.favorite));
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -93,6 +102,10 @@ export function HistoryPage() {
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-1 text-sm">
+          <input type="checkbox" checked={onlyFav} onChange={(e) => setOnlyFav(e.target.checked)} />
+          {t('history.onlyFavorites')}
+        </label>
         <span className="text-sm text-[var(--color-muted)]">{list.length}</span>
       </div>
       {!loaded ? <p className="text-sm text-[var(--color-muted)]">…</p> : null}

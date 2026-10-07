@@ -138,6 +138,23 @@ describe('MCP 工具（v2 客户端，2026-07-28 协议）', () => {
   });
 });
 
+describe('MCP 预设', () => {
+  it('list_presets 与 preset_id 套用', async () => {
+    running = await serve();
+    const base = running.url.replace(/\/mcp$/, '');
+    const put = await fetch(`${base}/api/presets`, { method: 'PUT', headers: { 'content-type': 'application/json', 'x-ark-client': 'web' }, body: JSON.stringify({ name: 'b64', modelId: 'fake/img', modeId: 'generate', values: { b64: true }, prompt: 'from preset' }) });
+    const preset = (await put.json()) as { preset: { id: string } };
+    const client = await v2Client(running);
+    const list = text(await client.callTool({ name: 'list_presets', arguments: { model_id: 'fake/img' } }));
+    expect(list[0]).toMatchObject({ preset_id: preset.preset.id, params: { b64: true } });
+    const p = text(await client.callTool({ name: 'preview_request', arguments: { model_id: 'fake/img', preset_id: preset.preset.id } }));
+    expect(p.request.body).toMatchObject({ prompt: 'from preset', response_format: 'b64_json' });
+    const wrong = await client.callTool({ name: 'preview_request', arguments: { model_id: 'fake/video', preset_id: preset.preset.id } });
+    expect(wrong.isError).toBe(true);
+    await client.close();
+  });
+});
+
 describe('MCP 兼容旧版客户端（v1 SDK，2025 代握手，模拟 Claude Code 2.1.220）', () => {
   it('initialize + tools/list + tools/call', async () => {
     running = await serve();

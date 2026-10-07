@@ -19,6 +19,7 @@ import { TaskQueue } from '../queue/TaskQueue';
 import { TaskResult } from '../results/ResultView';
 import { IssuesPanel } from './IssuesPanel';
 import { ModelPicker } from './ModelPicker';
+import { PresetBar } from './PresetBar';
 
 type RightTab = 'preview' | 'result' | 'queue';
 
@@ -117,6 +118,7 @@ export function StudioPage() {
               />
             ) : null}
             {mode.hint ? <p className="text-xs text-[var(--color-muted)]">{tx(mode.hint)}</p> : null}
+            <PresetBar form={form} onInsertText={(text) => setPrompt(form.prompt ? `${form.prompt}\n${text}` : text)} />
 
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm">

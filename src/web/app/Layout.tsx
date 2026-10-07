@@ -25,6 +25,9 @@ export function Layout() {
           <NavLink to="/history" className={navItem}>
             {t('nav.history')}
           </NavLink>
+          <NavLink to="/library" className={navItem}>
+            {t('nav.library')}
+          </NavLink>
           <NavLink to="/settings" className={navItem}>
             {t('nav.settings')}
           </NavLink>

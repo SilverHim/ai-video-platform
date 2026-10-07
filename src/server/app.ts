@@ -13,6 +13,7 @@ import { fileRoutes } from './routes/files.js';
 import { healthRoutes } from './routes/health.js';
 import { keyRoutes } from './routes/keys.js';
 import { taskRoutes } from './routes/tasks.js';
+import { libraryRoutes } from './routes/library.js';
 import { mcpRoutes } from './mcp/route.js';
 import { McpTokenStore } from './mcp/token.js';
 import type { Catalog } from './tasks/task-service.js';
@@ -60,6 +61,7 @@ export function createApp(deps: AppDeps) {
   app.route('/api/assets', assetRoutes(deps));
   app.route('/api/events', eventRoutes(deps));
   app.route('/api', taskRoutes(deps));
+  app.route('/api', libraryRoutes(deps));
   const mcpToken = new McpTokenStore(deps.config.paths.mcpToken);
   app.get('/api/mcp', (c) => {
     const url = `http://127.0.0.1:${deps.getPort()}/mcp`;

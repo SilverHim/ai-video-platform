@@ -80,4 +80,26 @@ export const MIGRATIONS: string[] = [
     error TEXT
   );
   `,
+  `
+  CREATE TABLE presets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    mode_id TEXT NOT NULL,
+    values_json TEXT NOT NULL,
+    prompt TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX idx_presets_model ON presets(model_id);
+
+  CREATE TABLE templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    text TEXT NOT NULL,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];

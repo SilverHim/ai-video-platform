@@ -3,6 +3,7 @@ import { Layout } from './Layout';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { StudioPage } from '../features/studio/StudioPage';
 import { HistoryPage } from '../features/history/HistoryPage';
+import { LibraryPage } from '../features/library/LibraryPage';
 
 export const router = createBrowserRouter([
   {
@@ -11,6 +12,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <StudioPage /> },
       { path: 'history', element: <HistoryPage /> },
+      { path: 'library', element: <LibraryPage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],
   },

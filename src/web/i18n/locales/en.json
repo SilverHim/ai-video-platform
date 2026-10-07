@@ -117,7 +117,11 @@
     "raw": "Raw responses",
     "outputDir": "Local folder",
     "allProviders": "All providers",
-    "allStatus": "All statuses"
+    "allStatus": "All statuses",
+    "favorite": "Favorite",
+    "unfavorite": "Unfavorite",
+    "reveal": "Show in folder",
+    "onlyFavorites": "Favorites only"
   },
   "status": {
     "awaiting_consent": "Awaiting consent",
@@ -164,5 +168,28 @@
     "note1": "The command writes to ~/.claude.json (user scope), not to the project repo.",
     "note2": "Generation tools are billed; results include an estimated cost. Public upload of local videos needs allow_public_upload from the agent.",
     "note3": "Set this server's timeout to 600000 (10 min) in Claude Code; video tools accept wait_seconds."
+  },
+  "library": {
+    "presets": "Parameter presets",
+    "templates": "Prompt templates",
+    "noPresets": "No presets yet: click “Save preset” in the studio",
+    "presetHint": "Presets store model, mode and parameters (optionally the prompt); shared by the web UI and MCP.",
+    "apply": "Apply",
+    "templateName": "Template name",
+    "templateText": "Template text; use variables like {{subject}} and fill them on insert",
+    "templateTags": "Tags (comma separated)",
+    "add": "Add",
+    "applyPreset": "Apply preset ({{n}})",
+    "savePreset": "Save preset",
+    "presetName": "Preset name",
+    "includePrompt": "Also save the current prompt?",
+    "insertTemplate": "Insert template",
+    "noTemplates": "Add templates on the Presets & Templates page",
+    "fillVar": "Fill “{{v}}”"
+  },
+  "settings_data": {
+    "title": "Data",
+    "rebuild": "Rebuild history from outputs",
+    "rebuildDone": "Scanned {{scanned}} result folders, restored {{restored}} tasks"
   }
 }

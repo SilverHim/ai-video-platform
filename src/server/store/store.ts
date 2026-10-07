@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { FormInput } from '../../shared/catalog/types.js';
 import type { MediaMeta } from '../../shared/catalog/types.js';
-import type { ExchangeRecord, ResultRecord, TaskListQuery, TaskRecord } from '../../shared/task/records.js';
+import type { ExchangeRecord, PresetRecord, ResultRecord, TaskListQuery, TaskRecord, TemplateRecord } from '../../shared/task/records.js';
 import { MIGRATIONS } from './schema.js';
 
 type Row = Record<string, unknown>;
@@ -291,6 +291,47 @@ export class Store {
     this.db
       .prepare('INSERT INTO capture_ledger (key, state, path, updated_at, error) VALUES ($k, $s, $p, $at, $e) ON CONFLICT(key) DO UPDATE SET state = $s, path = $p, updated_at = $at, error = $e')
       .run({ k: key, s: state, p: path, at: now, e: error });
+  }
+
+  /* ---------------- 预设 / 模板 ---------------- */
+
+  listPresets(modelId?: string): PresetRecord[] {
+    const rows = (modelId ? this.db.prepare('SELECT * FROM presets WHERE model_id = $m ORDER BY updated_at DESC').all({ m: modelId }) : this.db.prepare('SELECT * FROM presets ORDER BY updated_at DESC').all()) as Row[];
+    return rows.map((r) => ({ id: String(r.id), name: String(r.name), modelId: String(r.model_id), modeId: String(r.mode_id), values: p(r.values_json, {}), prompt: (r.prompt as string | null) ?? null, createdAt: Number(r.created_at), updatedAt: Number(r.updated_at) }));
+  }
+
+  getPreset(id: string): PresetRecord | null {
+    return this.listPresets().find((x) => x.id === id) ?? null;
+  }
+
+  upsertPreset(x: PresetRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO presets (id, name, model_id, mode_id, values_json, prompt, created_at, updated_at) VALUES ($id, $name, $m, $mode, $v, $prompt, $c, $u)
+         ON CONFLICT(id) DO UPDATE SET name = $name, model_id = $m, mode_id = $mode, values_json = $v, prompt = $prompt, updated_at = $u`,
+      )
+      .run({ id: x.id, name: x.name, m: x.modelId, mode: x.modeId, v: JSON.stringify(x.values), prompt: x.prompt, c: x.createdAt, u: x.updatedAt });
+  }
+
+  deletePreset(id: string): boolean {
+    return Number(this.db.prepare('DELETE FROM presets WHERE id = $id').run({ id }).changes) > 0;
+  }
+
+  listTemplates(): TemplateRecord[] {
+    return (this.db.prepare('SELECT * FROM templates ORDER BY updated_at DESC').all() as Row[]).map((r) => ({ id: String(r.id), name: String(r.name), text: String(r.text), tags: p(r.tags_json, []), createdAt: Number(r.created_at), updatedAt: Number(r.updated_at) }));
+  }
+
+  upsertTemplate(x: TemplateRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO templates (id, name, text, tags_json, created_at, updated_at) VALUES ($id, $name, $text, $tags, $c, $u)
+         ON CONFLICT(id) DO UPDATE SET name = $name, text = $text, tags_json = $tags, updated_at = $u`,
+      )
+      .run({ id: x.id, name: x.name, text: x.text, tags: JSON.stringify(x.tags), c: x.createdAt, u: x.updatedAt });
+  }
+
+  deleteTemplate(id: string): boolean {
+    return Number(this.db.prepare('DELETE FROM templates WHERE id = $id').run({ id }).changes) > 0;
   }
 
   /* ---------------- 行转换 ---------------- */

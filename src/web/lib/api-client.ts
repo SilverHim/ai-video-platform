@@ -3,7 +3,7 @@ import type { FormInput, Issue, MediaMeta } from '../../shared/catalog/types';
 import type { I18nText } from '../../shared/i18n';
 import { SseParser } from '../../shared/sse/parse';
 import type { NormalizedError } from '../../shared/task/errors';
-import type { ExchangeRecord, ServerEvent, TaskRecord } from '../../shared/task/records';
+import type { ExchangeRecord, PresetRecord, ServerEvent, TaskRecord, TemplateRecord } from '../../shared/task/records';
 
 export class ApiRequestError extends Error {
   constructor(
@@ -104,6 +104,15 @@ export const api = {
   listKeys: () => request<{ keys: KeyStatus[] }>('/api/keys'),
   setKey: (provider: ProviderId, apiKey: string) => request<{ key: KeyStatus }>(`/api/keys/${provider}`, { method: 'PUT', body: JSON.stringify({ apiKey }) }),
   clearKey: (provider: ProviderId) => request<{ key: KeyStatus }>(`/api/keys/${provider}`, { method: 'DELETE' }),
+  listPresets: (modelId?: string) => request<{ presets: PresetRecord[] }>(`/api/presets${modelId ? `?modelId=${encodeURIComponent(modelId)}` : ''}`).then((r) => r.presets),
+  savePreset: (p: Pick<PresetRecord, 'name' | 'modelId' | 'modeId' | 'values' | 'prompt'> & { id?: string }) => request<{ preset: PresetRecord }>(`/api/presets${p.id ? `/${p.id}` : ''}`, { method: 'PUT', body: JSON.stringify(p) }).then((r) => r.preset),
+  deletePreset: (id: string) => request<{ ok: true }>(`/api/presets/${id}`, { method: 'DELETE' }),
+  listTemplates: () => request<{ templates: TemplateRecord[] }>('/api/templates').then((r) => r.templates),
+  saveTemplate: (t: Pick<TemplateRecord, 'name' | 'text' | 'tags'> & { id?: string }) => request<{ template: TemplateRecord }>(`/api/templates${t.id ? `/${t.id}` : ''}`, { method: 'PUT', body: JSON.stringify(t) }).then((r) => r.template),
+  deleteTemplate: (id: string) => request<{ ok: true }>(`/api/templates/${id}`, { method: 'DELETE' }),
+  patchTask: (id: string, patch: { favorite?: boolean; note?: string | null }) => request<{ task: TaskRecord }>(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.task),
+  reveal: (path: string, action: 'reveal' | 'open' = 'reveal') => request<{ ok: boolean }>(`/api/outputs/${action}`, { method: 'POST', body: JSON.stringify({ path }) }),
+  rebuildHistory: () => request<{ scanned: number; restored: number }>('/api/outputs/rebuild', { method: 'POST', body: '{}' }),
   mcpInfo: () => request<{ url: string; token: string; command: string }>('/api/mcp'),
   rotateMcpToken: () => request<{ token: string }>('/api/mcp/rotate', { method: 'POST', body: '{}' }),
   testKey: (provider: ProviderId) => request<{ ok: boolean; status?: number; error?: NormalizedError }>(`/api/keys/${provider}/test`, { method: 'POST', body: '{}' }),

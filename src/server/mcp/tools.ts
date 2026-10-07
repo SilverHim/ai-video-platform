@@ -31,6 +31,7 @@ const generateShape = {
   assets: assetSpec,
   model_override: z.string().optional().describe('BytePlus：用推理接入点 ID（ep-…）覆盖 model'),
   temp_host: z.enum(['uguu', 'tmpfiles']).optional().describe('本地视频上传用的公共临时托管站（默认 uguu）'),
+  preset_id: z.string().optional().describe('先套用这个预设的模式与参数（list_presets 查），再用 params 覆盖'),
 };
 
 export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog): void {
@@ -42,6 +43,15 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
     const found = catalog.getModel(modelId);
     if (!found) throw new McpInputError(`未知模型 ${modelId}；用 list_models 查看可用模型`);
     return found;
+  };
+
+  /** 套用预设：预设的模式 / 参数 / 提示词作为默认，调用方传的值覆盖 */
+  const applyPreset = <T extends { preset_id?: string | undefined; model_id: string; mode?: string | undefined; params?: Record<string, unknown> | undefined; prompt?: string | undefined }>(input: T): T => {
+    if (!input.preset_id) return input;
+    const p = deps.store.getPreset(input.preset_id);
+    if (!p) throw new McpInputError(`预设不存在：${input.preset_id}`);
+    if (p.modelId !== input.model_id) throw new McpInputError(`预设 ${p.name} 属于模型 ${p.modelId}，与 model_id 不一致`);
+    return { ...input, mode: input.mode ?? p.modeId, params: { ...p.values, ...(input.params ?? {}) }, prompt: input.prompt ?? p.prompt ?? undefined };
   };
 
   const toolError = (err: unknown): ToolResult => {
@@ -169,8 +179,9 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
       inputSchema: generateInput,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async (input) => {
+    async (raw) => {
       try {
+        const input = applyPreset(raw);
         const { provider, model } = resolveModel(input.model_id);
         const form = await toForm(input as McpGenerateInput, provider, model, conv);
         const p = svc.preview(form, input.temp_host ? { tempHost: input.temp_host } : {});
@@ -199,8 +210,9 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
       inputSchema: withConsent,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    async (input) => {
+    async (raw) => {
       try {
+        const input = applyPreset(raw);
         const { provider, model } = resolveModel(input.model_id);
         if (model.output !== 'image') return fail(`${model.id} 是视频模型，请用 create_video_task`);
         const form = await toForm(input as McpGenerateInput, provider, model, conv);
@@ -222,8 +234,9 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
       inputSchema: withConsent.extend({ wait_seconds: z.number().int().min(0).max(540).optional().describe('最多等待多少秒（0–540），默认不等') }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    async (input, ctx) => {
+    async (raw, ctx) => {
       try {
+        const input = applyPreset(raw);
         const { provider, model } = resolveModel(input.model_id);
         if (model.output !== 'video') return fail(`${model.id} 是图像模型，请用 generate_image`);
         const form = await toForm(input as McpGenerateInput, provider, model, conv);
@@ -287,10 +300,10 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
     'list_presets',
     {
       title: '列出预设',
-      description: '列出保存的参数预设（预设功能完成后可用）。',
-      inputSchema: z.object({}),
+      description: '列出保存的参数预设（网页「预设与模板」里维护）。生成工具可用 preset_id 套用。',
+      inputSchema: z.object({ model_id: z.string().optional() }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async () => ok({ presets: [], note: '预设功能将在后续版本提供' }),
+    async ({ model_id }) => ok(deps.store.listPresets(model_id).map((p) => ({ preset_id: p.id, name: p.name, model_id: p.modelId, mode: p.modeId, params: p.values, ...(p.prompt ? { prompt: p.prompt } : {}) }))),
   );
 }

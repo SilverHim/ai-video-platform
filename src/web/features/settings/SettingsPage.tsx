@@ -115,6 +115,16 @@ export function SettingsPage() {
         <h3 className="font-medium">{t('mcp.title')}</h3>
         <McpCard />
       </section>
+      <section className="space-y-2">
+        <h3 className="font-medium">{t('settings_data.title')}</h3>
+        <button
+          type="button"
+          className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm"
+          onClick={() => void api.rebuildHistory().then((r) => alert(t('settings_data.rebuildDone', r)))}
+        >
+          {t('settings_data.rebuild')}
+        </button>
+      </section>
     </div>
   );
 }

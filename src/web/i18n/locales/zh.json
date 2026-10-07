@@ -117,7 +117,11 @@
     "raw": "原始响应",
     "outputDir": "本地目录",
     "allProviders": "全部服务商",
-    "allStatus": "全部状态"
+    "allStatus": "全部状态",
+    "favorite": "收藏",
+    "unfavorite": "取消收藏",
+    "reveal": "在文件夹中显示",
+    "onlyFavorites": "只看收藏"
   },
   "status": {
     "awaiting_consent": "待确认",
@@ -164,5 +168,28 @@
     "note1": "命令写入 ~/.claude.json（user 作用域），不会进项目仓库。",
     "note2": "agent 调用生成工具会产生费用，结果里附预估费用；本地视频公开上传需要 agent 显式传 allow_public_upload。",
     "note3": "建议在 Claude Code 里把该服务器的 timeout 设为 600000（10 分钟），视频任务可用 wait_seconds 等待。"
+  },
+  "library": {
+    "presets": "参数预设",
+    "templates": "提示词模板",
+    "noPresets": "还没有预设：在工作台点「存为预设」",
+    "presetHint": "预设保存模型、模式和参数（可选含提示词），网页和 MCP 共用。",
+    "apply": "套用",
+    "templateName": "模板名称",
+    "templateText": "模板内容，可用 {{主体}} 这样的变量，插入时填写",
+    "templateTags": "标签（逗号分隔）",
+    "add": "添加",
+    "applyPreset": "套用预设（{{n}}）",
+    "savePreset": "存为预设",
+    "presetName": "预设名称",
+    "includePrompt": "同时保存当前提示词？",
+    "insertTemplate": "插入模板",
+    "noTemplates": "在「预设与模板」页添加模板",
+    "fillVar": "填写「{{v}}」"
+  },
+  "settings_data": {
+    "title": "数据",
+    "rebuild": "从 outputs 重建历史",
+    "rebuildDone": "扫描 {{scanned}} 个结果目录，恢复 {{restored}} 条任务"
   }
 }
