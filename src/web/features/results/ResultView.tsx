@@ -72,7 +72,17 @@ function MediaTile({ r, onUseAsRef }: { r: ResultRecord; onUseAsRef?: (r: Result
     <div className="group relative overflow-hidden rounded-md bg-[var(--color-bg)]">
       {r.kind === 'video' ? (
         broken ? (
-          <div className="p-3 text-xs text-[var(--color-warn)]">{t('results.cannotPlay')}</div>
+          <div className="space-y-2 p-3 text-xs text-[var(--color-warn)]">
+            <p>{t('results.cannotPlay')}</p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => void api.reveal(r.path!, 'open')}>
+                {t('results.openSystem')}
+              </Button>
+              <Button size="sm" onClick={() => void api.reveal(r.path!, 'reveal')}>
+                {t('history.reveal')}
+              </Button>
+            </div>
+          </div>
         ) : (
           <video src={url} controls preload="metadata" className="w-full" onError={() => setBroken(true)} />
         )

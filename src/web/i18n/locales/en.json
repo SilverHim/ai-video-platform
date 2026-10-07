@@ -104,7 +104,8 @@
     "failures": "{{n}} blocked or failed",
     "refresh": "Check now",
     "cancel": "Cancel queued task",
-    "polling": "Polling in the background; it continues even if you close the page and saves results automatically"
+    "polling": "Polling in the background; it continues even if you close the page and saves results automatically",
+    "openSystem": "Open in system player"
   },
   "queue": {
     "empty": "No tasks yet",

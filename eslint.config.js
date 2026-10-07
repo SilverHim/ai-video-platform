@@ -52,7 +52,8 @@ export default tseslint.config(
     },
   },
   {
-    files: ['scripts/**/*.{js,mjs,ts}', '*.config.{js,ts}', 'tests/**/*.ts'],
+    files: ['scripts/**/*.{js,mjs,ts}', '*.config.{js,ts}', 'tests/**/*.ts', 'src/**/*.test.ts', 'src/**/__tests__/**/*.ts'],
     languageOptions: { globals: globals.node },
+    rules: { 'no-restricted-imports': 'off' },
   },
 );
