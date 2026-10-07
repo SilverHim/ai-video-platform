@@ -57,6 +57,8 @@ export interface TaskServiceDeps {
   events: EventBus;
   /** mock 模式下没有配置 Key 也能跑 */
   mock?: boolean;
+  /** 异步任务创建成功后通知调度器开始轮询 */
+  onTaskCreated?: (taskId: string) => void;
   now?: () => number;
 }
 
@@ -213,8 +215,9 @@ export class TaskService {
     if (normalized.kind === 'error') {
       this.fail(task.id, normalized.error);
     } else if (normalized.kind === 'task-created') {
-      this.d.store.updateTask(task.id, { status: 'queued', upstreamTaskId: normalized.taskId });
+      this.d.store.updateTask(task.id, { status: 'queued', upstreamTaskId: normalized.taskId, outputDir: this.d.capture.outputDirFor({ ...task, upstreamTaskId: normalized.taskId }) });
       this.emit(task.id);
+      this.d.onTaskCreated?.(task.id);
     } else {
       this.d.store.updateTask(task.id, { status: 'running', failures: normalized.failures, usage: normalized.usage ?? null });
       this.emit(task.id);
@@ -354,6 +357,41 @@ export class TaskService {
     if (task) this.d.events.emit({ type: 'task.updated', task });
   }
 
+  /**
+   * 取消排队中的任务，或删除云端记录（服务商规则：queued → 取消；succeeded/failed/expired → 删除记录；running/cancelled 不能操作）
+   */
+  async cancelOrDeleteRemote(taskId: string): Promise<{ ok: boolean; task: TaskRecord | null; error?: NormalizedError }> {
+    const task = this.d.store.getTask(taskId);
+    if (!task) throw new TaskInputError('not_found', { zh: '任务不存在', en: 'Task not found' }, [], 404);
+    const found = this.catalog.getModel(task.modelId);
+    const ep = found?.model.endpoints.cancel;
+    if (!found || !ep || !task.upstreamTaskId) throw new TaskInputError('not_supported', { zh: '该任务不支持取消或删除云端记录', en: 'Cancel/delete is not supported for this task' }, [], 400);
+    if (task.status === 'running' || task.status === 'streaming') throw new TaskInputError('not_allowed', { zh: '生成中的任务不能取消', en: 'Running tasks cannot be cancelled' }, [], 409);
+    const apiKey = this.apiKey(found.provider);
+    const res = await this.d.upstream.call({ provider: found.provider, endpointId: ep, baseUrlId: task.baseUrlId, apiKey, pathParams: { id: task.upstreamTaskId } }).catch((err: unknown) => {
+      throw new TaskInputError('upstream_error', { zh: err instanceof Error ? err.message : String(err), en: err instanceof Error ? err.message : String(err) }, [], 502);
+    });
+    this.d.store.addExchange({ taskId, at: this.now(), kind: 'cancel', status: res.status, body: truncateBody(res.bodyText) });
+    const err = found.provider.normalizeError(res);
+    if (err) return { ok: false, task: this.d.store.getTask(taskId), error: err };
+    if (task.status === 'queued') {
+      this.d.store.updateTask(taskId, { status: 'cancelled' });
+      this.emit(taskId);
+    }
+    return { ok: true, task: this.d.store.getTask(taskId) };
+  }
+
+  /** 云端任务列表（手动刷新用；BytePlus 列表接口 QPS 只有 1） */
+  async listRemote(providerId: string, query: Record<string, string>): Promise<{ status: number; body: unknown }> {
+    const provider = this.catalog.getProvider(providerId);
+    const ep = provider && Object.values(provider.endpoints).find((e) => e.id === 'video.list');
+    if (!provider || !ep) throw new TaskInputError('unknown_provider', { zh: `未知服务商：${providerId}`, en: `Unknown provider: ${providerId}` }, [], 404);
+    const res = await this.d.upstream.call({ provider, endpointId: ep.id, apiKey: this.apiKey(provider), query });
+    const err = provider.normalizeError(res);
+    if (err) throw new TaskInputError('upstream_error', { zh: err.message, en: err.message }, [], res.status >= 400 ? res.status : 502);
+    return { status: res.status, body: sanitizeForPreview(safeJson(res.bodyText) ?? null) };
+  }
+
   /** 免费校验 Key（BytePlus / MiniMax 的任务列表接口） */
   async testKey(providerId: string): Promise<{ ok: boolean; error?: NormalizedError; status?: number }> {
     const provider = this.catalog.getProvider(providerId);
@@ -384,5 +422,6 @@ export function normalizeForm(form: FormInput): FormInput {
     prompt: form.prompt ?? '',
     ...(form.rawOverrides ? { rawOverrides: form.rawOverrides } : {}),
     ...(form.modelOverride ? { modelOverride: form.modelOverride } : {}),
+    ...(form.derivedFrom ? { derivedFrom: form.derivedFrom } : {}),
   };
 }

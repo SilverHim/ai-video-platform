@@ -68,6 +68,7 @@ export async function startServer(opts: ServerOptions & { version?: string }): P
     throw lastErr;
   }
 
+  container.services.scheduler.start();
   return {
     url: `http://127.0.0.1:${boundPort}`,
     port: boundPort,

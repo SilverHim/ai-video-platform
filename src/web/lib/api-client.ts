@@ -114,7 +114,9 @@ export const api = {
     return request<{ tasks: TaskRecord[] }>(`/api/tasks${qs.size ? `?${qs}` : ''}`).then((r) => r.tasks);
   },
   getTask: (id: string) => request<{ task: TaskRecord; exchanges: ExchangeRecord[] }>(`/api/tasks/${id}`),
-  deleteTask: (id: string) => request<{ ok: true }>(`/api/tasks/${id}`, { method: 'DELETE' }),
+  deleteTask: (id: string, remote = false) => request<{ ok: true }>(`/api/tasks/${id}${remote ? '?remote=1' : ''}`, { method: 'DELETE' }),
+  cancelTask: (id: string) => request<{ ok: boolean; task: TaskRecord | null; error?: NormalizedError }>(`/api/tasks/${id}/cancel`, { method: 'POST', body: '{}' }),
+  refreshTask: (id: string) => request<{ task: TaskRecord }>(`/api/tasks/${id}/refresh`, { method: 'POST', body: '{}' }).then((r) => r.task),
 
   async uploadAsset(file: File): Promise<UploadedAsset> {
     const res = await fetch('/api/assets', {

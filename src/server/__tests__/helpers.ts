@@ -44,3 +44,8 @@ export function makeApp(opts: MakeAppOptions = {}, env: NodeJS.ProcessEnv = {}) 
     },
   };
 }
+
+/** 测试里读 JSON 响应（Node 类型把 Response.json() 标成 unknown） */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Json = any;
+export const json = (r: Response): Promise<Json> => r.json() as Promise<Json>;

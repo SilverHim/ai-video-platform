@@ -7,13 +7,15 @@ import { EventBus } from './events.js';
 import { Keystore } from './keystore.js';
 import { MockDownloader, mockFetch } from './mock/upstream.js';
 import { Store } from './store/store.js';
+import * as registry from '../shared/providers/registry.js';
+import { Scheduler } from './tasks/scheduler.js';
 import { TaskService, type Catalog } from './tasks/task-service.js';
 import { UpstreamClient, type FetchLike } from './upstream/http.js';
 
 export interface Container {
   keystore: Keystore;
   store: Store;
-  services: { tasks: TaskService; assets: AssetStore; capture: CaptureService; events: EventBus };
+  services: { tasks: TaskService; assets: AssetStore; capture: CaptureService; events: EventBus; scheduler: Scheduler };
   close: () => Promise<void>;
 }
 
@@ -27,12 +29,19 @@ export function createContainer(config: ResolvedConfig, opts: { fetchImpl?: Fetc
   const capture = new CaptureService(store, config.paths.outputs, downloader);
   const resolver = new AssetResolver(store, assets, config.paths.outputs);
   const events = new EventBus();
-  const tasks = new TaskService({ store, keystore, upstream, capture, resolver, events, mock: config.mock, ...(opts.catalog ? { catalog: opts.catalog } : {}) });
+  const catalog = opts.catalog ?? registry;
+  const emit = (taskId: string) => {
+    const task = store.getTask(taskId);
+    if (task) events.emit({ type: 'task.updated', task });
+  };
+  const scheduler = new Scheduler({ store, keystore, upstream, capture, catalog, emit, mock: config.mock });
+  const tasks = new TaskService({ store, keystore, upstream, capture, resolver, events, catalog, mock: config.mock, onTaskCreated: (id) => scheduler.track(id) });
   return {
     keystore,
     store,
-    services: { tasks, assets, capture, events },
+    services: { tasks, assets, capture, events, scheduler },
     close: async () => {
+      scheduler.stop();
       await upstream.close();
       if (downloader instanceof HttpDownloader) await downloader.close();
       store.close();

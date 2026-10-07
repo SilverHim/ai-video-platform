@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { BASE, makeApp, PORT, WEB_HEADERS } from './helpers.js';
+import { BASE, makeApp, PORT, WEB_HEADERS, json } from './helpers.js';
 
 let cleanup = () => {};
 afterEach(() => cleanup());
@@ -14,13 +14,13 @@ describe('本机守卫 local-guard', () => {
   it('合法请求可以访问 /api/health', async () => {
     const res = await setup().request(`${BASE}/api/health`, { headers: WEB_HEADERS });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, version: 'test' });
+    expect(await json(res)).toMatchObject({ ok: true, version: 'test' });
   });
 
   it('错误的 Host（DNS 重绑定）返回 403', async () => {
     const res = await setup().request(`${BASE}/api/health`, { headers: { ...WEB_HEADERS, host: `evil.example.com:${PORT}` } });
     expect(res.status).toBe(403);
-    expect(await res.json()).toMatchObject({ error: { code: 'forbidden_host' } });
+    expect(await json(res)).toMatchObject({ error: { code: 'forbidden_host' } });
   });
 
   it('localhost 作为 Host 也允许', async () => {
@@ -31,7 +31,7 @@ describe('本机守卫 local-guard', () => {
   it('跨源 Origin 返回 403', async () => {
     const res = await setup().request(`${BASE}/api/health`, { headers: { ...WEB_HEADERS, origin: 'https://evil.example.com' } });
     expect(res.status).toBe(403);
-    expect(await res.json()).toMatchObject({ error: { code: 'forbidden_origin' } });
+    expect(await json(res)).toMatchObject({ error: { code: 'forbidden_origin' } });
   });
 
   it('Origin: null（file:// 页面）返回 403', async () => {
@@ -47,7 +47,7 @@ describe('本机守卫 local-guard', () => {
   it('缺少 X-Ark-Client 返回 403', async () => {
     const res = await setup().request(`${BASE}/api/health`, { headers: { host: `127.0.0.1:${PORT}` } });
     expect(res.status).toBe(403);
-    expect(await res.json()).toMatchObject({ error: { code: 'missing_client_header' } });
+    expect(await json(res)).toMatchObject({ error: { code: 'missing_client_header' } });
   });
 
   it('Sec-Fetch-Site: cross-site 返回 403', async () => {
@@ -65,7 +65,7 @@ describe('本机守卫 local-guard', () => {
   it('未知 /api 路径返回 JSON 404', async () => {
     const res = await setup().request(`${BASE}/api/nope`, { headers: WEB_HEADERS });
     expect(res.status).toBe(404);
-    expect(await res.json()).toMatchObject({ error: { code: 'not_found' } });
+    expect(await json(res)).toMatchObject({ error: { code: 'not_found' } });
   });
 
   it('响应带安全头', async () => {

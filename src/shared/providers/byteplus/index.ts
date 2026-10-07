@@ -2,6 +2,7 @@ import type { ProviderDef } from '../../catalog/types.js';
 import { T } from '../../catalog/helpers.js';
 import { normalizeBytePlusError } from './errors.js';
 import { SEEDREAM_MODELS } from './seedream/index.js';
+import { SEEDANCE_MODELS } from './seedance/index.js';
 
 export const BYTEPLUS_BASE_URL = 'https://ark.ap-southeast.bytepluses.com/api/v3';
 
@@ -28,6 +29,16 @@ export const byteplus: ProviderDef = {
   },
   keyTest: { endpointId: 'video.list', query: { page_num: '1', page_size: '1' } },
   limits: { maxRequestBytes: 64_000_000 },
-  models: [...SEEDREAM_MODELS],
+  // GET 查询 QPS 20、List 1（不轮询 List）；任务记录只能查最近 7 天
+  polling: {
+    firstDelayMs: 5_000,
+    schedule: [
+      { untilAgeMs: 2 * 60_000, intervalMs: 5_000 },
+      { untilAgeMs: 10 * 60_000, intervalMs: 10_000 },
+    ],
+    defaultIntervalMs: 15_000,
+    queryWindowMs: 7 * 24 * 3600_000,
+  },
+  models: [...SEEDREAM_MODELS, ...SEEDANCE_MODELS],
   normalizeError: normalizeBytePlusError,
 };

@@ -101,7 +101,10 @@
     "cannotPlay": "The browser cannot play this video (possibly 10-bit HEVC); download it and use a system player",
     "useAsRef": "Use as reference",
     "reuse": "Reuse parameters",
-    "failures": "{{n}} blocked or failed"
+    "failures": "{{n}} blocked or failed",
+    "refresh": "Check now",
+    "cancel": "Cancel queued task",
+    "polling": "Polling in the background; it continues even if you close the page and saves results automatically"
   },
   "queue": {
     "empty": "No tasks yet",

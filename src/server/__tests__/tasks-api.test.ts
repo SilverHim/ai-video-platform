@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { TaskRecord } from '../../shared/task/records.js';
 import { MockDownloader } from '../mock/upstream.js';
 import { makePng } from '../mock/png.js';
-import { BASE, makeApp, WEB_HEADERS } from './helpers.js';
+import { BASE, makeApp, WEB_HEADERS, json } from './helpers.js';
 import { fakeCatalog, fakeForm } from './fake-catalog.js';
 
 let cleanup = () => {};
@@ -36,7 +36,7 @@ describe('/api/preview', () => {
   it('返回请求、curl（Key 占位）、费用', async () => {
     const { post } = setup();
     const res = await post('/api/preview', { form: fakeForm() });
-    const body = await res.json();
+    const body = await json(res);
     expect(body.canSubmit).toBe(true);
     expect(body.request).toMatchObject({ method: 'POST', url: 'https://ark.ap-southeast.bytepluses.com/api/v3/images/generations', body: { model: 'fake-img-001', prompt: 'a cat', stream: false } });
     expect(body.curl).toContain('$ARK_API_KEY');
@@ -54,7 +54,7 @@ describe('/api/tasks（同步图像）', () => {
   it('提交 → 落盘 → /files 可访问 → manifest', async () => {
     const { post, get, config } = setup();
     const res = await post('/api/tasks', { form: fakeForm() });
-    const { task } = (await res.json()) as { task: TaskRecord };
+    const { task } = (await json(res)) as { task: TaskRecord };
     expect(task.status).toBe('succeeded');
     expect(task.capture).toBe('done');
     expect(task.origin).toBe('web');
@@ -69,13 +69,13 @@ describe('/api/tasks（同步图像）', () => {
     const manifest = JSON.parse(readFileSync(join(config.paths.outputs, task.outputDir!, 'manifest.json'), 'utf8'));
     expect(manifest.task.form.prompt).toBe('a cat');
     expect(JSON.stringify(manifest)).not.toContain('mock-key');
-    const detail = await (await get(`/api/tasks/${task.id}`)).json();
+    const detail = await json(await get(`/api/tasks/${task.id}`));
     expect(detail.exchanges[0]).toMatchObject({ kind: 'submit', status: 200 });
   });
 
   it('组图中一张被拦截 → partial，failures 记录', async () => {
     const { post } = setup();
-    const { task } = await (await post('/api/tasks', { form: fakeForm({ prompt: 'MOCK_SENSITIVE', values: { group: true } }) })).json();
+    const { task } = await json(await post('/api/tasks', { form: fakeForm({ prompt: 'MOCK_SENSITIVE', values: { group: true } }) }));
     expect(task.status).toBe('partial');
     expect(task.results).toHaveLength(2);
     expect(task.failures).toHaveLength(1);
@@ -83,7 +83,7 @@ describe('/api/tasks（同步图像）', () => {
 
   it('b64 结果直接解码落盘', async () => {
     const { post } = setup();
-    const { task } = await (await post('/api/tasks', { form: fakeForm({ values: { b64: true } }) })).json();
+    const { task } = await json(await post('/api/tasks', { form: fakeForm({ values: { b64: true } }) }));
     expect(task.status).toBe('succeeded');
     expect(task.results[0].bytes).toBeGreaterThan(0);
     expect(task.results[0].remoteUrl).toBeNull();
@@ -91,7 +91,7 @@ describe('/api/tasks（同步图像）', () => {
 
   it('上游参数错误 → failed + 归一化错误', async () => {
     const { post } = setup();
-    const { task } = await (await post('/api/tasks', { form: fakeForm({ prompt: 'MOCK_FAIL' }) })).json();
+    const { task } = await json(await post('/api/tasks', { form: fakeForm({ prompt: 'MOCK_FAIL' }) }));
     expect(task.status).toBe('failed');
     expect(task.error).toMatchObject({ category: 'invalid_param', code: 'InvalidParameter', requestId: 'mock0000000001' });
   });
@@ -100,23 +100,23 @@ describe('/api/tasks（同步图像）', () => {
     const { post, get } = setup();
     const res = await post('/api/tasks', { form: fakeForm({ prompt: '  ' }) });
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await json(res);
     expect(body.error.code).toBe('invalid_form');
     expect(body.error.issues[0].id).toBe('prompt:required');
-    expect((await (await get('/api/tasks')).json()).tasks).toHaveLength(0);
+    expect((await json(await get('/api/tasks'))).tasks).toHaveLength(0);
   });
 
   it('非 mock 模式缺 Key → 400 missing_key', async () => {
     const { post } = setup({ mock: false });
     const res = await post('/api/tasks', { form: fakeForm() });
     expect(res.status).toBe(400);
-    expect((await res.json()).error.code).toBe('missing_key');
+    expect((await json(res)).error.code).toBe('missing_key');
   });
 
   it('列表与删除', async () => {
     const { post, get, app } = setup();
-    const { task } = await (await post('/api/tasks', { form: fakeForm() })).json();
-    expect((await (await get('/api/tasks?limit=10')).json()).tasks.map((t: TaskRecord) => t.id)).toEqual([task.id]);
+    const { task } = await json(await post('/api/tasks', { form: fakeForm() }));
+    expect((await json(await get('/api/tasks?limit=10'))).tasks.map((t: TaskRecord) => t.id)).toEqual([task.id]);
     const del = await app.request(`${BASE}/api/tasks/${task.id}`, { method: 'DELETE', headers: WEB_HEADERS });
     expect(del.status).toBe(200);
     expect((await get(`/api/tasks/${task.id}`)).status).toBe(404);
@@ -159,19 +159,19 @@ describe('/api/assets 与本地素材', () => {
     const { app, post, store } = setup();
     const png = makePng(20, 10);
     const up = (name: string) => app.request(`${BASE}/api/assets`, { method: 'POST', headers: { ...WEB_HEADERS, 'content-type': 'image/png', 'x-asset-filename': encodeURIComponent(name) }, body: png });
-    const a = (await (await up('参考图.png')).json()).asset;
-    const b = (await (await up('again.png')).json()).asset;
+    const a = (await json(await up('参考图.png'))).asset;
+    const b = (await json(await up('again.png'))).asset;
     expect(a.id).toBe(b.id);
     expect(a).toMatchObject({ mime: 'image/png', bytes: png.length, filename: '参考图.png', meta: { kind: 'image', width: 20, height: 10, hasAlpha: false } });
     const content = await app.request(`${BASE}/api/assets/${a.id}/content`, { headers: WEB_HEADERS });
     expect(Buffer.from(await content.arrayBuffer()).equals(png)).toBe(true);
 
     const slots = { image: [{ id: 'ref1', source: { type: 'local', assetId: a.id, mime: 'image/png', bytes: png.length }, meta: a.meta }] };
-    const preview = await (await post('/api/preview', { form: fakeForm({ slots, prompt: 'like {{ref:ref1}}' }) })).json();
+    const preview = await json(await post('/api/preview', { form: fakeForm({ slots, prompt: 'like {{ref:ref1}}' }) }));
     expect(preview.request.body.image).toMatch(/^data:image\/png;base64,…\(/);
     expect(preview.request.body.prompt).toBe('like Image 1');
 
-    const { task } = await (await post('/api/tasks', { form: fakeForm({ slots, prompt: 'like {{ref:ref1}}' }) })).json();
+    const { task } = await json(await post('/api/tasks', { form: fakeForm({ slots, prompt: 'like {{ref:ref1}}' }) }));
     expect(task.status).toBe('succeeded');
     expect(String(task.request.image)).toMatch(/^data:image\/png;base64,…/);
     expect(store.getTask(task.id)!.form.slots.image![0]!.source).toMatchObject({ type: 'local', assetId: a.id });
@@ -182,7 +182,7 @@ describe('/api/assets 与本地素材', () => {
     const slots = { image: [{ id: 'x', source: { type: 'local', assetId: 'missing', mime: 'image/png', bytes: 10 } }] };
     const res = await post('/api/tasks', { form: fakeForm({ slots }) });
     expect(res.status).toBe(400);
-    expect((await res.json()).error.code).toBe('asset_resolve_failed');
+    expect((await json(res)).error.code).toBe('asset_resolve_failed');
   });
 });
 
@@ -203,6 +203,6 @@ describe('每个结果只下载一次', () => {
 describe('/api/keys/:provider/test', () => {
   it('mock 上游下校验成功', async () => {
     const { post } = setup();
-    expect(await (await post('/api/keys/byteplus/test', {})).json()).toMatchObject({ ok: true, status: 200 });
+    expect(await json(await post('/api/keys/byteplus/test', {}))).toMatchObject({ ok: true, status: 200 });
   });
 });

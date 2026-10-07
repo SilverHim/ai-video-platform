@@ -1,7 +1,7 @@
 import { createServer } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { startServer, type RunningServer } from '../index.js';
-import { tempDir } from './helpers.js';
+import { tempDir, json } from './helpers.js';
 
 const running: RunningServer[] = [];
 let cleanup = () => {};
@@ -19,7 +19,7 @@ describe('startServer', () => {
     expect(s.url.startsWith('http://127.0.0.1:')).toBe(true);
     const res = await fetch(`${s.url}/api/health`, { headers: { 'x-ark-client': 'web' } });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, dataDir: s.config.dataDir });
+    expect(await json(res)).toMatchObject({ ok: true, dataDir: s.config.dataDir });
   });
 
   it('端口被占用时向后尝试', async () => {

@@ -1,7 +1,7 @@
 import { readFileSync, statSync, existsSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Keystore, maskKey, normalizeKey } from '../keystore.js';
-import { BASE, makeApp, tempDir, WEB_HEADERS } from './helpers.js';
+import { BASE, makeApp, tempDir, WEB_HEADERS, json } from './helpers.js';
 
 const SECRET = 'sk-test-0123456789abcdefSECRET';
 let cleanup = () => {};
@@ -92,6 +92,6 @@ describe('/api/keys', () => {
     cleanup = made.cleanup;
     made.keystore.set('minimax', SECRET);
     const res = await made.app.request(`${BASE}/api/keys/minimax`, { method: 'DELETE', headers: WEB_HEADERS });
-    expect(await res.json()).toMatchObject({ key: { configured: false } });
+    expect(await json(res)).toMatchObject({ key: { configured: false } });
   });
 });

@@ -2,6 +2,7 @@ import type { ProviderDef } from '../../catalog/types.js';
 import { T } from '../../catalog/helpers.js';
 import { normalizeMiniMaxError } from './errors.js';
 import { IMAGE01_MODELS } from './image01/index.js';
+import { H3_MODELS } from './h3/index.js';
 
 export const MINIMAX_BASE_URL = 'https://api.minimax.io';
 
@@ -26,6 +27,13 @@ export const minimax: ProviderDef = {
   },
   keyTest: { endpointId: 'video.list', query: { page_num: '1', page_size: '1' } },
   limits: { maxRequestBytes: 64_000_000 },
-  models: [...IMAGE01_MODELS],
+  // 官方建议每 10 秒查询一次；只能查最近 7 天
+  polling: {
+    firstDelayMs: 10_000,
+    schedule: [{ untilAgeMs: 10 * 60_000, intervalMs: 10_000 }],
+    defaultIntervalMs: 15_000,
+    queryWindowMs: 7 * 24 * 3600_000,
+  },
+  models: [...IMAGE01_MODELS, ...H3_MODELS],
   normalizeError: normalizeMiniMaxError,
 };

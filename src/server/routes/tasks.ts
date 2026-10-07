@@ -84,11 +84,47 @@ export function taskRoutes(deps: AppDeps) {
     return c.json({ task, exchanges: deps.store.listExchanges(task.id) });
   });
 
-  app.delete('/tasks/:id', (c) => {
+  /** 删除本地记录；?remote=1 时先删除云端记录（仅已结束的任务） */
+  app.delete('/tasks/:id', async (c) => {
     const id = c.req.param('id');
+    if (c.req.query('remote') === '1') {
+      try {
+        const r = await svc.cancelOrDeleteRemote(id);
+        if (!r.ok) return c.json({ ok: false, error: r.error }, 502);
+      } catch (err) {
+        return inputError(err);
+      }
+    }
     if (!deps.store.deleteTask(id)) return c.json({ error: { code: 'not_found', message: '任务不存在' } }, 404);
     deps.services.events.emit({ type: 'task.deleted', taskId: id });
     return c.json({ ok: true });
+  });
+
+  /** 取消排队中的异步任务 */
+  app.post('/tasks/:id/cancel', async (c) => {
+    try {
+      const r = await svc.cancelOrDeleteRemote(c.req.param('id'));
+      return c.json(r, r.ok ? 200 : 502);
+    } catch (err) {
+      return inputError(err);
+    }
+  });
+
+  /** 立即重查（也用于恢复因缺 Key / 连续出错而暂停的轮询） */
+  app.post('/tasks/:id/refresh', async (c) => {
+    const task = await deps.services.scheduler.refresh(c.req.param('id'));
+    if (!task) return c.json({ error: { code: 'not_found', message: '任务不存在' } }, 404);
+    return c.json({ task });
+  });
+
+  /** 云端任务列表（原样返回，手动刷新） */
+  app.get('/cloud/:provider/tasks', async (c) => {
+    try {
+      const q: Record<string, string> = { page_num: c.req.query('page_num') ?? '1', page_size: c.req.query('page_size') ?? '20' };
+      return c.json(await svc.listRemote(c.req.param('provider'), q));
+    } catch (err) {
+      return inputError(err);
+    }
   });
 
   app.post('/keys/:provider/test', async (c) => {

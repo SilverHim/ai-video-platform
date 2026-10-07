@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Download, Eye, EyeOff, RotateCcw, ImagePlus } from 'lucide-react';
+import { Ban, Download, Eye, EyeOff, ImagePlus, RefreshCw, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ResultRecord, TaskRecord } from '../../../shared/task/records';
@@ -133,7 +133,17 @@ export function TaskResult({ task, compact = false }: { task: TaskRecord; compac
         <span className="text-xs text-[var(--color-muted)]">{new Date(task.createdAt).toLocaleString()}</span>
         {task.origin === 'mcp' ? <Badge tone="accent">MCP</Badge> : null}
         {task.costEstimate ? <span className="text-xs text-[var(--color-muted)]">≈${task.costEstimate.amount.toFixed(4)}</span> : null}
-        <Button size="sm" variant="ghost" className="ml-auto" title={t('results.reuse')} onClick={() => loadForm(task.form)}>
+        {task.kind === 'async' && ['queued', 'running', 'unknown', 'submit_unknown'].includes(task.status) ? (
+          <Button size="sm" variant="ghost" className="ml-auto" title={t('results.refresh')} onClick={() => void api.refreshTask(task.id)}>
+            <RefreshCw size={12} />
+          </Button>
+        ) : null}
+        {task.kind === 'async' && task.status === 'queued' ? (
+          <Button size="sm" variant="ghost" title={t('results.cancel')} onClick={() => void api.cancelTask(task.id)}>
+            <Ban size={12} />
+          </Button>
+        ) : null}
+        <Button size="sm" variant="ghost" className={task.kind === 'async' && ['queued', 'running', 'unknown', 'submit_unknown'].includes(task.status) ? '' : 'ml-auto'} title={t('results.reuse')} onClick={() => loadForm(task.form)}>
           <RotateCcw size={12} />
           {compact ? null : t('results.reuse')}
         </Button>
@@ -146,6 +156,12 @@ export function TaskResult({ task, compact = false }: { task: TaskRecord; compac
           {task.error.hint ? <div className="text-xs">{tx(task.error.hint)}</div> : null}
           {task.error.requestId ? <div className="text-xs opacity-75">request id: {task.error.requestId}</div> : null}
         </div>
+      ) : null}
+      {task.kind === 'async' && (task.status === 'queued' || task.status === 'running') ? (
+        <p className="text-xs text-[var(--color-muted)]">
+          {t('results.polling')}
+          {task.upstreamTaskId ? ` · ${task.upstreamTaskId}` : ''}
+        </p>
       ) : null}
       {task.failures.length ? <p className="text-xs text-[var(--color-warn)]">{t('results.failures', { n: task.failures.length })}</p> : null}
       {base ? <LayerViewer base={base} layers={layers} /> : null}

@@ -15,6 +15,7 @@ import { keyRoutes } from './routes/keys.js';
 import { taskRoutes } from './routes/tasks.js';
 import { staticSite } from './static.js';
 import type { Store } from './store/store.js';
+import type { Scheduler } from './tasks/scheduler.js';
 import type { TaskService } from './tasks/task-service.js';
 
 export interface Services {
@@ -22,6 +23,7 @@ export interface Services {
   assets: AssetStore;
   capture: CaptureService;
   events: EventBus;
+  scheduler: Scheduler;
 }
 
 export interface AppDeps {

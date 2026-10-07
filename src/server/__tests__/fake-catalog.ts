@@ -1,7 +1,7 @@
 import type { ModelDef, ProviderDef, UpstreamResponse } from '../../shared/catalog/types.js';
 import { T } from '../../shared/catalog/helpers.js';
 import { safeJson } from '../../shared/task/errors.js';
-import type { ResultAsset } from '../../shared/task/results.js';
+import type { ResultAsset, TaskSnapshot } from '../../shared/task/results.js';
 import { normalizeBytePlusError } from '../../shared/providers/byteplus/errors.js';
 import type { Catalog } from '../tasks/task-service.js';
 
@@ -62,6 +62,48 @@ export const fakeModel: ModelDef = {
   estimateCost: () => ({ amount: 0.03, currency: 'USD', basis: T('$0.03/张', '$0.03/image'), confidence: 'list-price' }),
 };
 
+/** 测试用的假视频模型：请求 / 响应格式与 Seedance 相同 */
+export const fakeVideoModel: ModelDef = {
+  id: 'fake/video',
+  providerId: 'byteplus',
+  apiModel: 'fake-video-001',
+  family: 'fake-video',
+  label: T('假视频模型', 'Fake video model'),
+  output: 'video',
+  kind: 'async',
+  lifecycle: { status: 'active' },
+  docs: [],
+  endpoints: { submit: 'video.create', get: 'video.get', cancel: 'video.delete', list: 'video.list' },
+  modes: [{ id: 't2v', label: T('文生视频', 'T2V'), slots: [], prompt: { required: true } }],
+  fields: [
+    { key: 'resolution', type: 'enum', label: T('分辨率', 'Resolution'), group: 'basic', wire: 'resolution', default: '480p', options: [{ value: '480p' }, { value: '720p' }] },
+    { key: 'last', type: 'bool', label: T('返回尾帧', 'Last frame'), group: 'output', wire: 'return_last_frame', default: true },
+  ],
+  constraints: [],
+  adapter: {
+    compose: (c) => ({ model: c.model.apiModel, content: [{ type: 'text', text: c.renderedPrompt }] }),
+    normalizeSubmit: (res) => {
+      const body = safeJson(res.bodyText) as { id?: string } | undefined;
+      return body?.id ? { kind: 'task-created', taskId: body.id } : { kind: 'error', error: { providerId: 'byteplus', category: 'unknown', code: 'NO_ID', message: 'no id', retryable: false } };
+    },
+    normalizeTask: (res) => {
+      const b = safeJson(res.bodyText) as { id: string; status: string; content?: { video_url?: string; last_frame_url?: string }; error?: { code: string; message: string }; usage?: Record<string, unknown> };
+      const map: Record<string, TaskSnapshot['status']> = { queued: 'queued', running: 'running', succeeded: 'succeeded', failed: 'failed', cancelled: 'cancelled', expired: 'expired' };
+      const assets: ResultAsset[] = [];
+      if (b.content?.video_url) assets.push({ index: 0, role: 'video', kind: 'video', source: { type: 'url', url: b.content.video_url } });
+      if (b.content?.last_frame_url) assets.push({ index: 0, role: 'last_frame', kind: 'image', source: { type: 'url', url: b.content.last_frame_url } });
+      return {
+        taskId: b.id,
+        status: map[b.status] ?? 'unknown',
+        rawStatus: b.status,
+        assets,
+        ...(b.error ? { error: { providerId: 'byteplus', category: 'task_type' as const, code: b.error.code, message: b.error.message, retryable: false } } : {}),
+        ...(b.usage ? { usage: b.usage } : {}),
+      };
+    },
+  },
+};
+
 export const fakeProvider: ProviderDef = {
   id: 'byteplus',
   label: T('假服务商', 'Fake provider'),
@@ -70,17 +112,24 @@ export const fakeProvider: ProviderDef = {
   endpoints: {
     'image.generate': { id: 'image.generate', method: 'POST', path: '/images/generations', timeoutMs: 10_000, retry: 'none' },
     'image.stream': { id: 'image.stream', method: 'POST', path: '/images/generations', timeoutMs: 10_000, retry: 'none', stream: true },
+    'video.create': { id: 'video.create', method: 'POST', path: '/contents/generations/tasks', timeoutMs: 10_000, retry: 'none' },
+    'video.get': { id: 'video.get', method: 'GET', path: '/contents/generations/tasks/{id}', timeoutMs: 10_000, retry: 'idempotent' },
+    'video.delete': { id: 'video.delete', method: 'DELETE', path: '/contents/generations/tasks/{id}', timeoutMs: 10_000, retry: 'none' },
     'video.list': { id: 'video.list', method: 'GET', path: '/contents/generations/tasks', timeoutMs: 10_000, retry: 'idempotent' },
   },
   keyTest: { endpointId: 'video.list', query: { page_num: '1', page_size: '1' } },
   limits: { maxRequestBytes: 64_000_000 },
-  models: [fakeModel],
+  polling: { firstDelayMs: 60_000, schedule: [], defaultIntervalMs: 60_000, queryWindowMs: 7 * 24 * 3600_000 },
+  models: [fakeModel, fakeVideoModel],
   normalizeError: normalizeBytePlusError,
 };
 
 export const fakeCatalog: Catalog = {
   getProvider: (id) => (id === 'byteplus' ? fakeProvider : undefined),
-  getModel: (id) => (id === fakeModel.id ? { provider: fakeProvider, model: fakeModel } : undefined),
+  getModel: (id) => {
+    const model = fakeProvider.models.find((m) => m.id === id);
+    return model ? { provider: fakeProvider, model } : undefined;
+  },
 };
 
 export const fakeForm = (over: Record<string, unknown> = {}) => ({ providerId: 'byteplus', modelId: 'fake/img', modeId: 'generate', values: {}, slots: {}, prompt: 'a cat', ...over });

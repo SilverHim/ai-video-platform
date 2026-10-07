@@ -76,6 +76,19 @@ export interface FormInput {
   rawOverrides?: Record<string, unknown>;
   /** 用 Endpoint ID 等覆盖 model 字段（BytePlus ep-xxx） */
   modelOverride?: string;
+  /** 派生自哪个已有任务（样片转正片、编辑 / 延长时使用） */
+  derivedFrom?: DerivedFrom;
+}
+
+export interface DerivedFrom {
+  /** 本地任务 id */
+  taskId: string;
+  /** 服务商任务 id（例如 Seedance 的 cgt-…，正片请求里的 draft_task.id） */
+  upstreamTaskId: string;
+  modelId: string;
+  /** 源任务创建时间（毫秒），用于判断样片 7 天有效期等 */
+  createdAt: number;
+  relation: 'draft-final' | 'edit' | 'extend' | 'reuse';
 }
 
 /* ------------------------------------------------------------------ */
@@ -369,8 +382,8 @@ export interface ModelDef {
   lifecycle: Lifecycle;
   badges?: I18nText[];
   docs: DocRef[];
-  /** 提交用的 endpoint id（见 ProviderDef.endpoints） */
-  endpoints: { submit: string; stream?: string; get?: string; cancel?: string };
+  /** 提交用的 endpoint id（见 ProviderDef.endpoints）；cancel 用于取消排队中的任务 / 删除云端记录 */
+  endpoints: { submit: string; stream?: string; get?: string; cancel?: string; list?: string };
   modes: ModeDef[];
   fields: FieldDef[];
   constraints: Constraint[];
@@ -395,6 +408,17 @@ export interface EndpointDef {
   stream?: boolean;
 }
 
+/** 异步任务的轮询节奏 */
+export interface PollingPolicy {
+  firstDelayMs: number;
+  /** 任务创建后 untilAgeMs 毫秒内用 intervalMs 间隔，按顺序匹配 */
+  schedule: { untilAgeMs: number; intervalMs: number }[];
+  /** schedule 之外的间隔 */
+  defaultIntervalMs: number;
+  /** 查询窗口（服务商只保留这么久的任务记录） */
+  queryWindowMs: number;
+}
+
 export interface ProviderDef {
   id: ProviderId;
   label: I18nText;
@@ -409,6 +433,7 @@ export interface ProviderDef {
   /** 免费校验 Key 用的请求 */
   keyTest?: { endpointId: string; query?: Record<string, string> };
   limits: { maxRequestBytes: number };
+  polling?: PollingPolicy;
   models: ModelDef[];
   normalizeError: (res: UpstreamResponse) => NormalizedError | null;
 }
