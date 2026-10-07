@@ -81,6 +81,9 @@ export interface StreamHandlers {
 }
 
 /** 读 SSE 响应流（fetch 版，可以带自定义请求头） */
+/** /api/events 超过这么久没有任何事件（含 ping）就视为断线 */
+const SSE_IDLE_MS = 45_000;
+
 async function readSse(res: Response, onEvent: (event: string | null, data: string) => void, signal?: AbortSignal): Promise<void> {
   if (!res.body) return;
   const reader = res.body.getReader();
@@ -169,21 +172,30 @@ export const api = {
     const loop = async () => {
       let delay = 1000;
       while (!stopped) {
-        ctrl = new AbortController();
+        const current = new AbortController();
+        ctrl = current;
+        // 看门狗：服务端每 20 秒发 ping；连接半死（如经代理时服务重启）收不到任何事件就主动断开重连
+        let lastSeen = Date.now();
+        const watchdog = setInterval(() => {
+          if (Date.now() - lastSeen > SSE_IDLE_MS) current.abort();
+        }, 5_000);
         try {
-          const res = await fetch('/api/events', { headers: headers(), signal: ctrl.signal, credentials: 'same-origin' });
+          const res = await fetch('/api/events', { headers: headers(), signal: current.signal, credentials: 'same-origin' });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           onStatus?.(true);
           delay = 1000;
           await readSse(
             res,
             (event, data) => {
+              lastSeen = Date.now();
               if (event === 'task.updated' || event === 'task.deleted') onEvent(JSON.parse(data) as ServerEvent);
             },
-            ctrl.signal,
+            current.signal,
           );
         } catch {
           // 断线：退避后重连
+        } finally {
+          clearInterval(watchdog);
         }
         onStatus?.(false);
         if (!stopped) await new Promise((r) => setTimeout(r, delay));

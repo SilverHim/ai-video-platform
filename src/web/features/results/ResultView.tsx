@@ -1,5 +1,7 @@
 import clsx from 'clsx';
-import { Ban, Download, Eye, EyeOff, ImagePlus, RefreshCw, RotateCcw } from 'lucide-react';
+import { Ban, Clapperboard, Download, Eye, EyeOff, FastForward, ImagePlus, RefreshCw, RotateCcw, Scissors, StepForward } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { continueFromLastFrame, draftFinalForm, editExtendForm, resultAsAsset } from './actions';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ResultRecord, TaskRecord } from '../../../shared/task/records';
@@ -63,8 +65,18 @@ function LayerViewer({ base, layers }: { base: ResultRecord; layers: ResultRecor
   );
 }
 
-function MediaTile({ r, onUseAsRef }: { r: ResultRecord; onUseAsRef?: (r: ResultRecord) => void }) {
+function MediaTile({ r, task, onUseAsRef }: { r: ResultRecord; task: TaskRecord; onUseAsRef?: (r: ResultRecord) => void }) {
   const { t } = useTranslation();
+  const loadForm = useStudio((s) => s.loadForm);
+  const navigate = useNavigate();
+  const open = (form: ReturnType<typeof editExtendForm>) => {
+    if (!form) return;
+    loadForm(form);
+    void navigate('/');
+  };
+  const edit = editExtendForm(task, r, 'edit');
+  const extend = editExtendForm(task, r, 'extend');
+  const cont = continueFromLastFrame(task, r);
   const [broken, setBroken] = useState(false);
   if (!r.path) return <div className="flex aspect-square items-center justify-center rounded-md bg-[var(--color-bg)] text-xs text-[var(--color-danger)]">{t('results.notSaved')}</div>;
   const url = api.fileUrl(r.path);
@@ -92,7 +104,7 @@ function MediaTile({ r, onUseAsRef }: { r: ResultRecord; onUseAsRef?: (r: Result
         </a>
       )}
       <div className="absolute right-1 top-1 hidden gap-1 group-hover:flex">
-        {onUseAsRef && r.kind === 'image' ? (
+        {onUseAsRef ? (
           <Button size="sm" title={t('results.useAsRef')} onClick={() => onUseAsRef(r)}>
             <ImagePlus size={12} />
           </Button>
@@ -101,8 +113,28 @@ function MediaTile({ r, onUseAsRef }: { r: ResultRecord; onUseAsRef?: (r: Result
           <Download size={12} />
         </a>
       </div>
-      <div className="px-1.5 py-1 text-[11px] text-[var(--color-muted)]">
-        {r.width && r.height ? `${r.width}×${r.height}` : ''} {r.role !== 'image' && r.role !== 'video' ? `· ${r.role}` : ''}
+      <div className="flex items-center gap-1 px-1.5 py-1 text-[11px] text-[var(--color-muted)]">
+        <span>
+          {r.width && r.height ? `${r.width}×${r.height}` : ''} {r.role !== 'image' && r.role !== 'video' ? `· ${r.role}` : ''}
+        </span>
+        {/* 派生入口常驻显示：编辑 / 延长此视频、用尾帧继续 */}
+        <span className="ml-auto flex gap-1">
+          {edit ? (
+            <Button size="sm" variant="ghost" title={t('results.editVideo')} aria-label={t('results.editVideo')} onClick={() => open(edit)}>
+              <Scissors size={12} />
+            </Button>
+          ) : null}
+          {extend ? (
+            <Button size="sm" variant="ghost" title={t('results.extendVideo')} aria-label={t('results.extendVideo')} onClick={() => open(extend)}>
+              <FastForward size={12} />
+            </Button>
+          ) : null}
+          {cont ? (
+            <Button size="sm" variant="ghost" title={t('results.continueLastFrame')} aria-label={t('results.continueLastFrame')} onClick={() => open(cont)}>
+              <StepForward size={12} />
+            </Button>
+          ) : null}
+        </span>
       </div>
     </div>
   );
@@ -117,23 +149,19 @@ export function TaskResult({ task, compact = false }: { task: TaskRecord; compac
   const model = getModel(task.modelId)?.model;
   const base = task.results.find((r) => r.role === 'base');
   const layers = task.results.filter((r) => r.role === 'layer');
-  const media = task.results.filter((r) => r.role !== 'base' && r.role !== 'layer');
+  const media = task.results.filter((r) => r.role !== 'base' && r.role !== 'layer').sort((a, b) => a.index - b.index);
 
   const useAsRef = (r: ResultRecord) => {
     const state = useStudio.getState();
     const current = state.modelId ? getModel(state.modelId) : undefined;
     const draft = state.modelId ? state.drafts[state.modelId] : undefined;
     const mode = current?.model.modes.find((m) => m.id === draft?.modeId) ?? current?.model.modes[0];
-    const slot = mode?.slots.find((s) => s.kind === 'image' && s.sources.includes('task-output'));
+    const slot = mode?.slots.find((s) => s.kind === r.kind && s.sources.includes('task-output'));
     if (!slot) return;
-    addAssets(slot.id, [
-      {
-        id: crypto.randomUUID(),
-        source: { type: 'task-output', taskId: task.id, index: r.index, ...(r.remoteUrl ? { remoteUrl: r.remoteUrl } : {}), ...(r.remoteExpiresAt ? { remoteExpiresAt: r.remoteExpiresAt } : {}), ...(r.path ? { localPath: r.path } : {}), ...(r.mime ? { mime: r.mime } : {}) },
-        meta: { kind: 'image', ...(r.mime ? { mime: r.mime } : {}), ...(r.bytes ? { bytes: r.bytes } : {}), ...(r.width ? { width: r.width } : {}), ...(r.height ? { height: r.height } : {}) },
-      },
-    ]);
+    addAssets(slot.id, [resultAsAsset(task, r)]);
   };
+  const final = draftFinalForm(task);
+  const navigate = useNavigate();
 
   return (
     <div className="space-y-2" data-testid={`task-${task.id}`}>
@@ -173,13 +201,22 @@ export function TaskResult({ task, compact = false }: { task: TaskRecord; compac
           {task.upstreamTaskId ? ` · ${task.upstreamTaskId}` : ''}
         </p>
       ) : null}
+      {final ? (
+        <Button size="sm" variant="primary" onClick={() => (loadForm(final), void navigate('/'))}>
+          <Clapperboard size={12} />
+          {t('results.draftFinal')}
+        </Button>
+      ) : null}
       {task.failures.length ? <p className="text-xs text-[var(--color-warn)]">{t('results.failures', { n: task.failures.length })}</p> : null}
       {base ? <LayerViewer base={base} layers={layers} /> : null}
       {media.length ? (
-        <div className={clsx('grid gap-2', compact ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3')}>
-          {media.map((r) => (
-            <MediaTile key={r.id} r={r} onUseAsRef={useAsRef} />
-          ))}
+        // 按容器宽度排列：窄栏里视频独占一行
+        <div className="@container">
+          <div className={clsx('grid gap-2', media.some((r) => r.kind === 'video') ? 'grid-cols-1 @xl:grid-cols-2' : compact ? 'grid-cols-2' : 'grid-cols-2 @2xl:grid-cols-3')}>
+            {media.map((r) => (
+              <MediaTile key={r.id} r={r} task={task} onUseAsRef={useAsRef} />
+            ))}
+          </div>
         </div>
       ) : null}
     </div>

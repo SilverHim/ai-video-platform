@@ -35,7 +35,14 @@
     "tabPreview": "Request",
     "tabResult": "Result",
     "tabQueue": "Queue",
-    "noResult": "Results appear here after you submit"
+    "noResult": "Results appear here after you submit",
+    "derived": {
+      "draft-final": "Draft → final",
+      "edit": "Edit video",
+      "extend": "Extend video",
+      "reuse": "Reuse result",
+      "clear": "Cancel"
+    }
   },
   "settings": {
     "title": "Settings",
@@ -105,7 +112,11 @@
     "refresh": "Check now",
     "cancel": "Cancel queued task",
     "polling": "Polling in the background; it continues even if you close the page and saves results automatically",
-    "openSystem": "Open in system player"
+    "openSystem": "Open in system player",
+    "editVideo": "Edit this video (Seedance 2.5)",
+    "extendVideo": "Extend this video (Seedance 2.5)",
+    "continueLastFrame": "Continue from last frame",
+    "draftFinal": "Generate final from this draft"
   },
   "queue": {
     "empty": "No tasks yet",

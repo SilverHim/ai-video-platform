@@ -27,7 +27,7 @@ export function StudioPage() {
   const { t } = useTranslation();
   const tx = useText();
   const { form, evaluated } = useCurrentForm();
-  const { selectMode, setValue, setPrompt, resetModel, setModelOverride, tempHost, setTempHost } = useStudio();
+  const { selectMode, setValue, setPrompt, resetModel, setModelOverride, tempHost, setTempHost, clearDerived } = useStudio();
   const { preview, loading, error } = usePreview(form, tempHost);
   const [consentOpen, setConsentOpen] = useState(false);
   const editor = useRef<PromptEditorHandle>(null);
@@ -116,6 +116,16 @@ export function StudioPage() {
                 onChange={selectMode}
                 options={userModes.map((m) => ({ value: m.id, label: <span className="inline-flex items-center gap-1">{tx(m.label)}{m.experimental ? <Badge tone="warn">{t('params.experimental')}</Badge> : null}</span>, title: m.hint ? tx(m.hint) : m.id }))}
               />
+            ) : null}
+            {form.derivedFrom ? (
+              <div className="flex items-center gap-2 rounded-md bg-[var(--color-accent)]/10 px-2 py-1 text-sm" data-testid="derived-banner">
+                <span>
+                  {t(`studio.derived.${form.derivedFrom.relation}`)} · <code className="text-xs">{form.derivedFrom.upstreamTaskId}</code>
+                </span>
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={clearDerived}>
+                  {t('studio.derived.clear')}
+                </Button>
+              </div>
             ) : null}
             {mode.hint ? <p className="text-xs text-[var(--color-muted)]">{tx(mode.hint)}</p> : null}
             <PresetBar form={form} onInsertText={(text) => setPrompt(form.prompt ? `${form.prompt}\n${text}` : text)} />

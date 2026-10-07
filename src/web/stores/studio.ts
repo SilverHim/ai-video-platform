@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AssetRef, FormInput, FormValues } from '../../shared/catalog/types';
+import type { AssetRef, DerivedFrom, FormInput, FormValues } from '../../shared/catalog/types';
 import { listModels, getModel } from '../../shared/providers/registry';
 
 /** 每个模型各自的草稿：切换模型时互不覆盖 */
@@ -11,6 +11,8 @@ export interface ModelDraft {
   slots: Record<string, Record<string, AssetRef[]>>;
   prompt: string;
   modelOverride?: string;
+  /** 派生自哪个任务（样片转正片、编辑 / 延长） */
+  derivedFrom?: DerivedFrom;
 }
 
 interface StudioState {
@@ -32,6 +34,8 @@ interface StudioState {
   /** 复用历史任务的参数 */
   loadForm: (form: FormInput) => void;
   resetModel: () => void;
+  /** 取消派生：回到普通模式 */
+  clearDerived: () => void;
   setShowHidden: (v: boolean) => void;
 }
 
@@ -61,7 +65,14 @@ export const useStudio = create<StudioState>()(
           const drafts = get().drafts;
           set({ modelId, drafts: drafts[modelId] ? drafts : { ...drafts, [modelId]: initialDraft(modelId) } });
         },
-        selectMode: (modeId) => update((d) => ({ ...d, modeId })),
+        selectMode: (modeId) =>
+          update((d) => {
+            // 离开派生模式（如样片转正片）时，派生来源一并清掉
+            const leaving = getModel(get().modelId ?? '')?.model.modes.find((m) => m.id === d.modeId)?.entry === 'derived';
+            const next = { ...d, modeId };
+            if (leaving) delete next.derivedFrom;
+            return next;
+          }),
         setValue: (key, value) => update((d) => ({ ...d, values: { ...d.values, [key]: value } })),
         patchValues: (patch) => update((d) => ({ ...d, values: { ...d.values, ...patch } })),
         setPrompt: (prompt) => update((d) => ({ ...d, prompt })),
@@ -89,10 +100,20 @@ export const useStudio = create<StudioState>()(
                 slots: { [form.modeId]: { ...form.slots } },
                 prompt: form.prompt,
                 ...(form.modelOverride ? { modelOverride: form.modelOverride } : {}),
+                ...(form.derivedFrom ? { derivedFrom: form.derivedFrom } : {}),
               },
             },
           }));
         },
+        clearDerived: () =>
+          update((d) => {
+            const m = get().modelId ? getModel(get().modelId!)?.model : undefined;
+            const mode = m?.modes.find((x) => x.id === d.modeId);
+            const next = { ...d };
+            delete next.derivedFrom;
+            if (mode?.entry === 'derived') next.modeId = initialDraft(get().modelId!).modeId;
+            return next;
+          }),
         resetModel: () => {
           const { modelId, drafts } = get();
           if (modelId) set({ drafts: { ...drafts, [modelId]: initialDraft(modelId) } });
@@ -119,5 +140,6 @@ export function currentForm(state: Pick<StudioState, 'modelId' | 'drafts'>): For
     slots: d.slots[modeId] ?? {},
     prompt: d.prompt,
     ...(d.modelOverride ? { modelOverride: d.modelOverride } : {}),
+    ...(d.derivedFrom ? { derivedFrom: d.derivedFrom } : {}),
   };
 }
