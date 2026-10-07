@@ -31,7 +31,14 @@
 
 图层分解的 `layer_image` / `layer_size` 没有测：它和官方合约的写法冲突，继续用官方写法。
 
-处理：`seed` 转为正式参数；`negative_prompt`、`optimize_prompt` 保留「实验」。三者都只对 5.0 pro / flash 开放，图层分解模式不开放，默认不发送。
+补充（用户自测，2026-10-08）：发送 `negative_prompt: ""` 去掉默认的 nsfw 负向提示后，默认的 nsfw 抑制不再生效（用户口述，未留存样本）。
+
+处理：
+- `seed` 转为正式参数；
+- `negative_prompt` 做成「NSFW 过滤」开关：默认开、不写字段；关闭时发送 `negative_prompt: ""`；
+- `optimize_prompt` 保留「实验」。
+
+三者都只对 5.0 pro / flash 开放，图层分解模式不开放，默认不写进请求。平台仍有基础内容安全策略，使用须遵守 BytePlus Acceptable Use Policy。
 
 ## 3. Endpoint 的内容过滤（Content filter）
 

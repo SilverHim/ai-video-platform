@@ -173,7 +173,8 @@ export function backgroundField(): FieldDef {
  * 以下三个参数只出现在模型目录元数据（arkcli models get 的 supported_params，5.0 pro / flash 标 support=true），
  * API 文档正文与官方 OpenAPI 合约都没有（2026-10-08 核对）。默认不发送。
  * 2026-10-08 在 5.0 flash 实测（见 docs/research/byteplus/catalog-params-test.md）：三个字段都被接受；
- * 同 seed 两次出图几乎一致（SSIM 0.999），seed 转为正式；negative_prompt / optimize_prompt 效果未验证，仍标实验。
+ * 同 seed 两次出图几乎一致（SSIM 0.999），seed 转为正式；negative_prompt 做成 NSFW 过滤开关（用户自测关闭有效）；
+ * optimize_prompt 效果未验证，仍标实验。
  * 图层分解模式不开放：目录元数据给图层分解的是另一套写法（layer_image / layer_size），与官方合约冲突。
  */
 const CATALOG_SOURCE = T(
@@ -182,26 +183,22 @@ const CATALOG_SOURCE = T(
 );
 const SEED_MAX = 2_147_483_647;
 
-/** 目录元数据给出的 negative_prompt 默认值 */
-export const NEGATIVE_PROMPT_DEFAULT = 'nsfw';
-
-export function negativePromptField(p: SeedreamProfile): FieldDef {
+/**
+ * NSFW 过滤：目录元数据称 negative_prompt 默认为 nsfw。开着时不写这个字段（沿用服务端默认）；
+ * 关闭时发送 negative_prompt: "" 去掉默认的 nsfw 负向提示（2026-10-08 用户自测关闭有效）。
+ * 用新的 key，避免旧草稿里存的负向提示词文本被当成类型错误。
+ */
+export function nsfwFilterField(p: SeedreamProfile): FieldDef {
   return {
-    key: 'negative_prompt',
-    type: 'text',
-    multiline: true,
-    label: T('负向提示词', 'Negative prompt'),
-    help: T(
-      `描述不希望出现在图里的内容。默认 nsfw（与目录元数据给的服务端默认一致，不发送）；清空会显式发送空字符串来覆盖默认，服务端是否接受、是否当成"没传"未验证；改成其他内容按原样发送。关闭后平台仍有基础内容安全策略，且须遵守 BytePlus Acceptable Use Policy。${CATALOG_SOURCE.zh}`,
-      `What should not appear in the image. Defaults to nsfw (same as the server default per catalog, not sent); clearing it sends an explicit empty string to override the default (whether the server accepts it or treats it as unset is unverified); any other text is sent as is. Baseline platform safety still applies, and the BytePlus Acceptable Use Policy must be followed. ${CATALOG_SOURCE.en}`,
-    ),
+    key: 'nsfw_filter',
+    type: 'bool',
+    label: T('NSFW 过滤', 'NSFW filter'),
+    help: T('关闭时请求里会加 negative_prompt: ""，去掉默认的 nsfw 负向提示。', 'When off, the request adds negative_prompt: "" to remove the default nsfw negative prompt.'),
     group: 'advanced',
-    experimental: true,
     modes: modeIdsOf(p).filter((m) => m !== 'layer'),
     wire: null,
-    // 等于默认值时不发送（请求体与不加这个字段时一致）；空字符串照发，用于覆盖服务端默认
-    fragment: (v) => (v === NEGATIVE_PROMPT_DEFAULT ? null : { negative_prompt: v }),
-    default: NEGATIVE_PROMPT_DEFAULT,
+    fragment: (v) => (v === false ? { negative_prompt: '' } : null),
+    default: true,
   };
 }
 
@@ -249,7 +246,7 @@ export function buildFields(p: SeedreamProfile): FieldDef[] {
     ...(p.transparent ? [backgroundField()] : []),
     ...(p.catalogParams ? [optimizePromptField(p)] : []),
     promptModeField(p),
-    ...(p.catalogParams ? [negativePromptField(p), catalogSeedField(p)] : []),
+    ...(p.catalogParams ? [nsfwFilterField(p), catalogSeedField(p)] : []),
     responseFormatField(),
     ...(p.stream ? [streamField()] : []),
     watermarkField(),

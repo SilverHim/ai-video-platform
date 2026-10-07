@@ -72,35 +72,37 @@ describe('模型注册与能力矩阵', () => {
 
   it('不声明文档与目录都没有的字段（guidance_scale / n）；目录元数据才有的字段只给 pro / flash，且默认不发送', () => {
     const banned = ['guidance_scale', 'n'];
-    const catalogOnly = ['negative_prompt', 'seed', 'optimize_prompt'];
+    const catalogOnly = ['nsfw_filter', 'seed', 'optimize_prompt'];
+    const catalogWire = ['negative_prompt', 'seed', 'optimize_prompt'];
     for (const m of SEEDREAM_MODELS) {
       const declared = (k: string) => m.fields.some((f) => f.key === k || f.wire === k);
       for (const k of banned) expect(declared(k)).toBe(false);
       for (const k of catalogOnly) expect(declared(k) || m.fields.some((f) => f.key === k)).toBe(m.id === PRO || m.id === FLASH);
       for (const f of m.fields.filter((x) => catalogOnly.includes(x.key))) {
-        // seed 已在 flash 实测可复现，转正；其余两项效果未验证，仍标实验
-        expect(Boolean(f.experimental)).toBe(f.key !== 'seed');
+        // seed 已在 flash 实测可复现、NSFW 过滤用户自测有效，转正；optimize_prompt 效果未验证，仍标实验
+        expect(Boolean(f.experimental)).toBe(f.key === 'optimize_prompt');
         expect(f.modes).not.toContain('layer');
       }
       for (const mode of m.modes) {
         const slots: Record<string, AssetRef[]> = mode.slots[0]!.min ? { image: [localImg('a', { hasAlpha: true })] } : {};
         const { body } = run(m.id, { modeId: mode.id, slots });
-        for (const k of [...banned, ...catalogOnly]) expect(body).not.toHaveProperty(k);
+        for (const k of [...banned, ...catalogWire]) expect(body).not.toHaveProperty(k);
       }
     }
   });
 
   it('目录元数据字段：填了才发送；关掉提示词优化时发送 optimize_prompt=false 并停用优化模式', () => {
-    const { body, ev } = run(FLASH, { values: { negative_prompt: 'text, watermark', seed: 42, optimize_prompt: false } });
-    expect(body).toMatchObject({ negative_prompt: 'text, watermark', seed: 42, optimize_prompt: false });
+    const { body, ev } = run(FLASH, { values: { nsfw_filter: false, seed: 42, optimize_prompt: false } });
+    expect(body).toMatchObject({ negative_prompt: '', seed: 42, optimize_prompt: false });
     expect(body).not.toHaveProperty('optimize_prompt_options');
     expect(ev.fields.optimize_prompt_mode).toMatchObject({ sent: false, disabledReason: { zh: '已关闭提示词优化' } });
-    expect(run(PRO, { values: { negative_prompt: 'nsfw', seed: null, optimize_prompt: true } }).body).toEqual(run(PRO).body);
-    // 负向提示词默认 nsfw 不发送；清空时显式发送空字符串，覆盖服务端默认
-    expect(evalForm(PRO).effective.negative_prompt).toBe('nsfw');
-    expect(run(PRO, { values: { negative_prompt: '' } }).body).toMatchObject({ negative_prompt: '' });
+    expect(run(PRO, { values: { nsfw_filter: true, seed: null, optimize_prompt: true } }).body).toEqual(run(PRO).body);
+    // NSFW 过滤默认开、不写 negative_prompt；旧草稿里的负向提示词文本不会产生类型警告
+    expect(evalForm(PRO).effective.nsfw_filter).toBe(true);
+    expect(issueIds(evalForm(PRO, { values: { negative_prompt: 'text' } }))).toEqual([]);
+    expect(run(PRO, { values: { negative_prompt: 'text' } }).body).not.toHaveProperty('negative_prompt');
     // 图层分解模式不开放这三个字段
-    const layer = run(PRO, { modeId: 'layer', slots: { image: [localImg('a')] }, values: { negative_prompt: 'x', seed: 1, optimize_prompt: false } }).body;
+    const layer = run(PRO, { modeId: 'layer', slots: { image: [localImg('a')] }, values: { nsfw_filter: false, seed: 1, optimize_prompt: false } }).body;
     for (const k of ['negative_prompt', 'seed', 'optimize_prompt']) expect(layer).not.toHaveProperty(k);
   });
 
