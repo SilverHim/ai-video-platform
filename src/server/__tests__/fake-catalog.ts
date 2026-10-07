@@ -74,14 +74,26 @@ export const fakeVideoModel: ModelDef = {
   lifecycle: { status: 'active' },
   docs: [],
   endpoints: { submit: 'video.create', get: 'video.get', cancel: 'video.delete', list: 'video.list' },
-  modes: [{ id: 't2v', label: T('文生视频', 'T2V'), slots: [], prompt: { required: true } }],
+  modes: [
+    { id: 't2v', label: T('文生视频', 'T2V'), slots: [], prompt: { required: true } },
+    {
+      id: 'ref',
+      label: T('参考视频', 'Reference video'),
+      slots: [{ id: 'reference_video', kind: 'video', role: 'reference_video', label: T('参考视频', 'Reference video'), min: 1, max: 2, sources: ['local', 'url', 'task-output'], spec: { formats: ['mp4', 'mov'], maxBytes: 200 * 1024 * 1024 } }],
+      prompt: { required: true },
+    },
+  ],
   fields: [
+    { key: 'expires', type: 'int', label: T('超时', 'Expires'), group: 'advanced', wire: 'execution_expires_after', default: 172800, min: 3600, max: 259200 },
     { key: 'resolution', type: 'enum', label: T('分辨率', 'Resolution'), group: 'basic', wire: 'resolution', default: '480p', options: [{ value: '480p' }, { value: '720p' }] },
     { key: 'last', type: 'bool', label: T('返回尾帧', 'Last frame'), group: 'output', wire: 'return_last_frame', default: true },
   ],
   constraints: [],
   adapter: {
-    compose: (c) => ({ model: c.model.apiModel, content: [{ type: 'text', text: c.renderedPrompt }] }),
+    compose: (c) => ({
+      model: c.model.apiModel,
+      content: [{ type: 'text', text: c.renderedPrompt }, ...Object.keys(c.refOrder).map((id) => ({ type: 'video_url', video_url: { url: c.resolved[id]!.wire }, role: 'reference_video' }))],
+    }),
     normalizeSubmit: (res) => {
       const body = safeJson(res.bodyText) as { id?: string } | undefined;
       return body?.id ? { kind: 'task-created', taskId: body.id } : { kind: 'error', error: { providerId: 'byteplus', category: 'unknown', code: 'NO_ID', message: 'no id', retryable: false } };

@@ -4,10 +4,10 @@ import { nextInterval, Scheduler } from '../tasks/scheduler.js';
 import { BASE, json, makeApp, WEB_HEADERS } from './helpers.js';
 import { fakeCatalog, fakeForm } from './fake-catalog.js';
 
-let cleanup = () => {};
+let cleanup: () => void | Promise<void> = () => {};
 beforeEach(() => setMockTiming({ queuedMs: 0, runningMs: 0 }));
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await cleanup();
   setMockTiming({ queuedMs: 1500, runningMs: 3000 });
 });
 

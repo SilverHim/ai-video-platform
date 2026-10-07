@@ -7,6 +7,7 @@ import { EventBus } from './events.js';
 import { Keystore } from './keystore.js';
 import { MockDownloader, mockFetch } from './mock/upstream.js';
 import { Store } from './store/store.js';
+import { createUploadTargets, type UploadTargets } from './upload-targets/registry.js';
 import * as registry from '../shared/providers/registry.js';
 import { Scheduler } from './tasks/scheduler.js';
 import { TaskService, type Catalog } from './tasks/task-service.js';
@@ -20,14 +21,14 @@ export interface Container {
 }
 
 /** 组装服务；测试可注入 fetch / downloader */
-export function createContainer(config: ResolvedConfig, opts: { fetchImpl?: FetchLike; downloader?: Downloader; env?: NodeJS.ProcessEnv; catalog?: Catalog } = {}): Container {
+export function createContainer(config: ResolvedConfig, opts: { fetchImpl?: FetchLike; downloader?: Downloader; env?: NodeJS.ProcessEnv; catalog?: Catalog; uploadTargets?: UploadTargets } = {}): Container {
   const keystore = new Keystore(config.paths.keys, opts.env ?? process.env);
   const store = new Store(config.paths.db);
   const upstream = new UpstreamClient(opts.fetchImpl ?? (config.mock ? mockFetch : undefined));
   const downloader = opts.downloader ?? (config.mock ? new MockDownloader() : new HttpDownloader());
   const assets = new AssetStore(store, config.paths.root);
   const capture = new CaptureService(store, config.paths.outputs, downloader);
-  const resolver = new AssetResolver(store, assets, config.paths.outputs);
+  const resolver = new AssetResolver(store, assets, config.paths.outputs, opts.uploadTargets ?? createUploadTargets(config.mock));
   const events = new EventBus();
   const catalog = opts.catalog ?? registry;
   const emit = (taskId: string) => {
@@ -42,9 +43,10 @@ export function createContainer(config: ResolvedConfig, opts: { fetchImpl?: Fetc
     services: { tasks, assets, capture, events, scheduler },
     close: async () => {
       scheduler.stop();
+      // 先同步关闭数据库：Windows 上打开中的文件不能删除 / 移动
+      store.close();
       await upstream.close();
       if (downloader instanceof HttpDownloader) await downloader.close();
-      store.close();
     },
   };
 }

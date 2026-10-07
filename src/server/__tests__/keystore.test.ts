@@ -4,8 +4,10 @@ import { Keystore, maskKey, normalizeKey } from '../keystore.js';
 import { BASE, makeApp, tempDir, WEB_HEADERS, json } from './helpers.js';
 
 const SECRET = 'sk-test-0123456789abcdefSECRET';
-let cleanup = () => {};
-afterEach(() => cleanup());
+let cleanup: () => void | Promise<void> = () => {};
+afterEach(async () => {
+  await cleanup();
+});
 
 describe('Keystore', () => {
   it('打码只保留首尾各 4 位', () => {

@@ -14,7 +14,8 @@ export const WEB_HEADERS = { host: `127.0.0.1:${PORT}`, 'x-ark-client': 'web' } 
 
 export function tempDir(prefix = 'ark-test-'): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  // Windows 上文件句柄释放可能稍慢，删除时重试
+  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) };
 }
 
 export interface MakeAppOptions extends Partial<ServerOptions> {
@@ -38,10 +39,15 @@ export function makeApp(opts: MakeAppOptions = {}, env: NodeJS.ProcessEnv = {}) 
     keystore: container.keystore,
     store: container.store,
     services: container.services,
-    cleanup: () => {
-      void container.close();
-      tmp.cleanup();
-    },
+    cleanup: (() => {
+      let done = false;
+      return async () => {
+        if (done) return;
+        done = true;
+        await container.close();
+        tmp.cleanup();
+      };
+    })(),
   };
 }
 

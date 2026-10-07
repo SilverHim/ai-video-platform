@@ -4,8 +4,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mimeFor, safeJoin, sendFile } from '../http/send-file.js';
 import { tempDir } from './helpers.js';
 
-let cleanup = () => {};
-afterEach(() => cleanup());
+let cleanup: () => void | Promise<void> = () => {};
+afterEach(async () => {
+  await cleanup();
+});
 
 describe('safeJoin 防路径穿越', () => {
   const root = resolve('/srv/outputs');

@@ -1,7 +1,7 @@
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
-import type { EvaluatedForm, FormInput, Issue, ModelDef, ProviderDef, UpstreamResponse } from '../../shared/catalog/types.js';
+import type { EvaluatedForm, FormInput, Issue, ModelDef, ProviderDef, ResolvedAssets, UpstreamResponse } from '../../shared/catalog/types.js';
 import { evaluate, CatalogLookupError } from '../../shared/engine/evaluate.js';
 import type { I18nText } from '../../shared/i18n.js';
 import * as registry from '../../shared/providers/registry.js';
@@ -12,7 +12,7 @@ import { SseParser, type SseEvent } from '../../shared/sse/parse.js';
 import { makeError, safeJson, type NormalizedError } from '../../shared/task/errors.js';
 import type { TaskOrigin, TaskRecord } from '../../shared/task/records.js';
 import type { PartialFailure, ResultAsset } from '../../shared/task/results.js';
-import { ResolveError, type AssetResolver } from '../assets/resolver.js';
+import { ResolveError, type AssetResolver, type ConsentInfo } from '../assets/resolver.js';
 import type { CaptureService } from '../capture/capture.js';
 import type { EventBus } from '../events.js';
 import type { Keystore } from '../keystore.js';
@@ -32,8 +32,17 @@ export class TaskInputError extends Error {
   }
 }
 
+export interface SubmitOptions {
+  /** 用户已同意把本地视频上传到公共临时托管站 */
+  publicUploadConsent?: boolean;
+  /** 选用的临时托管站 id（uguu / tmpfiles） */
+  tempHost?: string;
+}
+
 export interface PreviewResult {
   canSubmit: boolean;
+  /** 需要上传到公共托管的素材（提交前要征得同意） */
+  uploads: ConsentInfo;
   issues: Issue[];
   request: { method: string; url: string; body: Record<string, unknown>; bodyBytes: number; stream: boolean; endpointId: string };
   curl: string;
@@ -97,9 +106,9 @@ export class TaskService {
     }
   }
 
-  preview(form: FormInput): PreviewResult {
+  preview(form: FormInput, opts: SubmitOptions = {}): PreviewResult {
     const { provider, model, evaluated } = this.prepare(form);
-    const built = buildRequest(provider, model, evaluated, this.d.resolver.preview(evaluated), 'preview');
+    const built = buildRequest(provider, model, evaluated, this.d.resolver.preview(evaluated, provider.id, opts.tempHost), 'preview');
     const ep = provider.endpoints[built.endpointId]!;
     const url = resolveUrl(provider, ep, defaultBaseUrlId(provider));
     const body = sanitizeForPreview(built.body);
@@ -107,6 +116,7 @@ export class TaskService {
     const cost = model.estimateCost?.(evaluated.ctx) ?? null;
     return {
       canSubmit: !issues.some((i) => i.severity === 'error'),
+      uploads: this.d.resolver.consentInfo(evaluated, provider.id, opts.tempHost),
       issues,
       request: { method: built.method, url, body, bodyBytes: built.bodyBytes, stream: built.stream, endpointId: built.endpointId },
       curl: toCurl({ method: built.method, url, body, stream: built.stream, keyEnvVar: KEY_ENV_BY_PROVIDER[provider.id] ?? 'API_KEY' }).command,
@@ -123,11 +133,15 @@ export class TaskService {
   }
 
   /** 第一阶段：校验、建任务记录、解析素材、构建请求 */
-  private async begin(form: FormInput, origin: TaskOrigin): Promise<{ p: Prepared; task: TaskRecord; built: BuiltRequest; apiKey: string }> {
+  private async begin(form: FormInput, origin: TaskOrigin, opts: SubmitOptions = {}): Promise<{ p: Prepared; task: TaskRecord; built: BuiltRequest; apiKey: string }> {
     const p = this.prepare(form);
     const apiKey = this.apiKey(p.provider);
     if (!p.evaluated.canSubmit) {
       throw new TaskInputError('invalid_form', { zh: '参数校验未通过', en: 'Validation failed' }, p.evaluated.issues.filter((i) => i.severity === 'error'));
+    }
+    const consent = this.d.resolver.consentInfo(p.evaluated, p.provider.id, opts.tempHost);
+    if (consent.required && !opts.publicUploadConsent) {
+      throw new TaskInputError('consent_required', { zh: `有 ${consent.files.length} 个本地视频需要上传到 ${consent.target.label.zh}（任何拿到链接的人都能下载），请确认后再提交`, en: `${consent.files.length} local video(s) must be uploaded to ${consent.target.label.en} (anyone with the link can download); confirm first` }, [], 428);
     }
     const now = this.now();
     const task: TaskRecord = {
@@ -165,11 +179,18 @@ export class TaskService {
 
     let built: BuiltRequest;
     try {
-      const resolved = await this.d.resolver.resolve(p.evaluated);
+      const resolved = await this.d.resolver.resolve(p.evaluated, {
+        providerId: p.provider.id,
+        ...(opts.publicUploadConsent ? { publicUploadConsent: true } : {}),
+        ...(opts.tempHost ? { tempHost: opts.tempHost } : {}),
+        providerKey: apiKey,
+      });
       built = buildRequest(p.provider, p.model, p.evaluated, resolved, 'send');
+      adjustExpiryForUploads(built, resolved, this.now());
     } catch (err) {
       const e = err instanceof ResolveError ? err.i18n : { zh: String(err), en: String(err) };
-      this.fail(task.id, makeError({ providerId: p.provider.id, category: 'local_validation', code: 'ASSET_RESOLVE_FAILED', message: e.zh }));
+      const code = err instanceof ResolveError ? err.code : 'ASSET_RESOLVE_FAILED';
+      this.fail(task.id, makeError({ providerId: p.provider.id, category: code.startsWith('UPLOAD') ? 'upload' : 'local_validation', code, message: e.zh }));
       throw new TaskInputError('asset_resolve_failed', e, [], 400);
     }
     const blocking = built.issues.filter((i) => i.severity === 'error');
@@ -183,8 +204,8 @@ export class TaskService {
   }
 
   /** 非流式提交：同步图像在返回前完成落盘 */
-  async submit(form: FormInput, origin: TaskOrigin): Promise<TaskRecord> {
-    const { p, task, built, apiKey } = await this.begin(form, origin);
+  async submit(form: FormInput, origin: TaskOrigin, opts: SubmitOptions = {}): Promise<TaskRecord> {
+    const { p, task, built, apiKey } = await this.begin(form, origin, opts);
     return this.execute(p, task, built, apiKey);
   }
 
@@ -245,8 +266,8 @@ export class TaskService {
    * 流式提交（Seedream SSE）：每收到一张图立刻落盘，并把事件转发给调用方。
    * 调用方断开不影响上游读取与落盘。
    */
-  async submitStream(form: FormInput, origin: TaskOrigin, send: (ev: { event: string; data: string }) => void): Promise<TaskRecord> {
-    const { p, task, built, apiKey } = await this.begin(form, origin);
+  async submitStream(form: FormInput, origin: TaskOrigin, send: (ev: { event: string; data: string }) => void, opts: SubmitOptions = {}): Promise<TaskRecord> {
+    const { p, task, built, apiKey } = await this.begin(form, origin, opts);
     const safeSend = (event: string, data: unknown) => {
       try {
         send({ event, data: typeof data === 'string' ? data : JSON.stringify(data) });
@@ -404,6 +425,23 @@ export class TaskService {
     } catch (err) {
       return { ok: false, error: err instanceof UpstreamError ? err.error : makeError({ providerId, category: 'network', code: 'NETWORK', message: String(err) }) };
     }
+  }
+}
+
+/**
+ * 用了有寿命的托管直链时（例如 uguu 3 小时），把 execution_expires_after 缩到"直链剩余寿命 − 1 小时"，
+ * 避免任务排队太久、开始执行时素材链接已失效（下限 3600 秒）。
+ */
+export function adjustExpiryForUploads(built: BuiltRequest, resolved: ResolvedAssets, now: number): void {
+  if (!('execution_expires_after' in built.body)) return;
+  const expiries = Object.values(resolved).map((r) => r.expiresAt).filter((x): x is number => typeof x === 'number' && x > now);
+  if (!expiries.length) return;
+  const limit = Math.floor((Math.min(...expiries) - now) / 1000) - 3600;
+  const current = Number(built.body.execution_expires_after);
+  const next = Math.max(3600, Math.min(Number.isFinite(current) ? current : 172800, limit));
+  if (next !== current) {
+    built.body.execution_expires_after = next;
+    built.notes.push({ zh: `素材直链约 ${Math.round((Math.min(...expiries) - now) / 3600_000)} 小时后过期，已把 execution_expires_after 调整为 ${next} 秒`, en: `Asset links expire in ~${Math.round((Math.min(...expiries) - now) / 3600_000)}h; execution_expires_after set to ${next}s` });
   }
 }
 

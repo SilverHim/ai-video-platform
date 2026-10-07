@@ -4,7 +4,7 @@ import { startServer, type RunningServer } from '../index.js';
 import { tempDir, json } from './helpers.js';
 
 const running: RunningServer[] = [];
-let cleanup = () => {};
+let cleanup: () => void | Promise<void> = () => {};
 afterEach(async () => {
   while (running.length) await running.pop()!.close();
   cleanup();

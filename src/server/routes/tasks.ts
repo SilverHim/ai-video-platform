@@ -12,6 +12,13 @@ function inputError(err: unknown) {
   throw err;
 }
 
+/** 网页通过请求头传递"同意公开上传"与托管站选择 */
+function submitOptions(req: Request) {
+  const consent = req.headers.get('x-upload-consent') === '1';
+  const host = req.headers.get('x-upload-target') ?? undefined;
+  return { ...(consent ? { publicUploadConsent: true } : {}), ...(host ? { tempHost: host } : {}) };
+}
+
 async function readForm(req: Request): Promise<FormInput> {
   const body = (await req.json().catch(() => null)) as { form?: FormInput } | null;
   if (!body?.form || typeof body.form !== 'object') throw new TaskInputError('bad_request', { zh: '请求体需要 {form: {...}}', en: 'Body must be {form: {...}}' });
@@ -24,7 +31,7 @@ export function taskRoutes(deps: AppDeps) {
 
   app.post('/preview', async (c) => {
     try {
-      return c.json(svc.preview(await readForm(c.req.raw)));
+      return c.json(svc.preview(await readForm(c.req.raw), submitOptions(c.req.raw)));
     } catch (err) {
       return inputError(err);
     }
@@ -32,7 +39,7 @@ export function taskRoutes(deps: AppDeps) {
 
   app.post('/tasks', async (c) => {
     try {
-      const task = await svc.submit(await readForm(c.req.raw), 'web');
+      const task = await svc.submit(await readForm(c.req.raw), 'web', submitOptions(c.req.raw));
       return c.json({ task });
     } catch (err) {
       return inputError(err);
@@ -56,7 +63,7 @@ export function taskRoutes(deps: AppDeps) {
         if (!closed) queue.push(stream.writeSSE(ev).catch(() => (closed = true)));
       };
       try {
-        await svc.submitStream(form, 'web', send);
+        await svc.submitStream(form, 'web', send, submitOptions(c.req.raw));
       } catch (err) {
         const e = err instanceof TaskInputError ? { code: err.code, message: err.i18n.zh, i18n: err.i18n, issues: err.issues } : { code: 'internal_error', message: '服务内部错误' };
         send({ event: 'ark.error', data: JSON.stringify(e) });

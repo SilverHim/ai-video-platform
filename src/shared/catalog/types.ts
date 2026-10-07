@@ -316,6 +316,10 @@ export interface ResolvedAsset {
   preview: string;
   /** 对请求体大小的贡献估计（字节） */
   bytes: number;
+  /** 经上传目标得到的链接的过期时间（毫秒） */
+  expiresAt?: number;
+  /** 经哪个上传目标得到（uguu / tmpfiles / minimax-files …） */
+  uploadedVia?: string;
 }
 export type ResolvedAssets = Record<string, ResolvedAsset>;
 

@@ -7,8 +7,10 @@ import { makePng } from '../mock/png.js';
 import { BASE, makeApp, WEB_HEADERS, json } from './helpers.js';
 import { fakeCatalog, fakeForm } from './fake-catalog.js';
 
-let cleanup = () => {};
-afterEach(() => cleanup());
+let cleanup: () => void | Promise<void> = () => {};
+afterEach(async () => {
+  await cleanup();
+});
 
 function setup(opts: Parameters<typeof makeApp>[0] = {}) {
   const made = makeApp({ catalog: fakeCatalog, ...opts });

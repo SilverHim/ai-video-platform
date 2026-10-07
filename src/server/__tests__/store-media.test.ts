@@ -6,8 +6,10 @@ import { makePng } from '../mock/png.js';
 import { Store } from '../store/store.js';
 import { tempDir } from './helpers.js';
 
-let cleanup = () => {};
-afterEach(() => cleanup());
+let cleanup: () => void | Promise<void> = () => {};
+afterEach(async () => {
+  await cleanup();
+});
 
 describe('Store', () => {
   it('迁移幂等，任务/结果/交换记录/账本读写', () => {

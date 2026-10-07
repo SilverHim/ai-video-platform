@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { BASE, makeApp, PORT, WEB_HEADERS, json } from './helpers.js';
 
-let cleanup = () => {};
-afterEach(() => cleanup());
+let cleanup: () => void | Promise<void> = () => {};
+afterEach(async () => {
+  await cleanup();
+});
 
 function setup(opts = {}) {
   const made = makeApp(opts);
@@ -58,7 +60,7 @@ describe('本机守卫 local-guard', () => {
   it('开发模式允许 Vite 端口的 Host 与 Origin，非开发模式不允许', async () => {
     const devHeaders = { ...WEB_HEADERS, host: '127.0.0.1:5173', origin: 'http://127.0.0.1:5173' };
     expect((await setup({ dev: true }).request(`${BASE}/api/health`, { headers: devHeaders })).status).toBe(200);
-    cleanup();
+    await cleanup();
     expect((await setup({ dev: false }).request(`${BASE}/api/health`, { headers: devHeaders })).status).toBe(403);
   });
 
