@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { FEATURE_CAPABILITIES, INPUT_CAPABILITIES, OPTIONAL_STATUSES } from '../../shared/catalog/capabilities';
 import en from './locales/en.json';
 import zh from './locales/zh.json';
 
@@ -25,5 +26,15 @@ describe('界面文案', () => {
       for (const m of src.matchAll(/\bt\(\s*'([a-zA-Z_]+(?:\.[a-zA-Z_]+)+)'/g)) if (!all.has(m[1]!)) missing.push(`${m[1]} @ ${file.split('src/web/')[1]}`);
     }
     expect(missing).toEqual([]);
+  });
+
+  it('模型筛选用模板字符串拼的键（每种能力 / 状态）都有文案', () => {
+    const all = new Set(keys(zh));
+    const dynamic = [
+      ...INPUT_CAPABILITIES.map((c) => `modelFilter.input.${c}`),
+      ...FEATURE_CAPABILITIES.map((c) => `modelFilter.feature.${c}`),
+      ...OPTIONAL_STATUSES.map((c) => `modelFilter.include.${c}`),
+    ];
+    expect(dynamic.filter((k) => !all.has(k))).toEqual([]);
   });
 });

@@ -16,7 +16,7 @@
     "build": "vite build && tsup",
     "prestart": "node scripts/ensure-build.mjs",
     "start": "node dist/server/index.js --open",
-    "typecheck": "tsc -p tsconfig.shared.json && tsc -p tsconfig.server.json && tsc -p tsconfig.web.json",
+    "typecheck": "tsc -p tsconfig.shared.json && tsc -p tsconfig.server.json && tsc -p tsconfig.web.json && tsc -p tsconfig.webtest.json",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest"

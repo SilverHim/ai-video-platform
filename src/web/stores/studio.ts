@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AssetRef, DerivedFrom, FormInput, FormValues } from '../../shared/catalog/types';
+import { DEFAULT_MODEL_FILTER, type ModelFilter } from '../../shared/catalog/capabilities';
+import type { AssetRef, DerivedFrom, FormInput, FormValues, OutputKind } from '../../shared/catalog/types';
 import { listModels, getModel } from '../../shared/providers/registry';
 
 /** 每个模型各自的草稿：切换模型时互不覆盖 */
@@ -18,7 +19,10 @@ export interface ModelDraft {
 interface StudioState {
   modelId: string | null;
   drafts: Record<string, ModelDraft>;
-  showHidden: boolean;
+  /** 模型筛选条件，图像 / 视频各一份 */
+  filters: Record<OutputKind, ModelFilter>;
+  /** 每种输出类型上次用的模型（切换类型时回到它） */
+  lastByOutput: Partial<Record<OutputKind, string>>;
   /** 本地视频上传用的临时托管站 */
   tempHost: 'uguu' | 'tmpfiles';
   setTempHost: (h: 'uguu' | 'tmpfiles') => void;
@@ -36,8 +40,18 @@ interface StudioState {
   resetModel: () => void;
   /** 取消派生：回到普通模式 */
   clearDerived: () => void;
-  setShowHidden: (v: boolean) => void;
+  setFilter: (output: OutputKind, patch: Partial<ModelFilter>) => void;
+  resetFilter: (output: OutputKind) => void;
 }
+
+/** 把模型记为它所属输出类型的"上次用的模型" */
+function rememberLast(last: Partial<Record<OutputKind, string>>, modelId: string | null | undefined): Partial<Record<OutputKind, string>> {
+  const output = modelId ? getModel(modelId)?.model.output : undefined;
+  return output && modelId ? { ...last, [output]: modelId } : last;
+}
+
+const defaultFilter = (): ModelFilter => ({ ...DEFAULT_MODEL_FILTER, include: [...DEFAULT_MODEL_FILTER.include] });
+const defaultFilters = (): Record<OutputKind, ModelFilter> => ({ image: defaultFilter(), video: defaultFilter() });
 
 function initialDraft(modelId: string): ModelDraft {
   const m = getModel(modelId)?.model;
@@ -58,12 +72,18 @@ export const useStudio = create<StudioState>()(
       return {
         modelId: listModels()[0]?.model.id ?? null,
         drafts: {},
-        showHidden: false,
+        filters: defaultFilters(),
+        lastByOutput: {},
         tempHost: 'uguu',
         setTempHost: (tempHost) => set({ tempHost }),
         selectModel: (modelId) => {
-          const drafts = get().drafts;
-          set({ modelId, drafts: drafts[modelId] ? drafts : { ...drafts, [modelId]: initialDraft(modelId) } });
+          const { drafts, lastByOutput, modelId: prev } = get();
+          set({
+            modelId,
+            drafts: drafts[modelId] ? drafts : { ...drafts, [modelId]: initialDraft(modelId) },
+            // 切走的模型也记到它自己的类型下（它可能是经 loadForm / 默认值进来的）
+            lastByOutput: rememberLast(rememberLast(lastByOutput, prev), modelId),
+          });
         },
         selectMode: (modeId) =>
           update((d) => {
@@ -92,6 +112,7 @@ export const useStudio = create<StudioState>()(
           if (!getModel(form.modelId)) return;
           set((s) => ({
             modelId: form.modelId,
+            lastByOutput: rememberLast(rememberLast(s.lastByOutput, s.modelId), form.modelId),
             drafts: {
               ...s.drafts,
               [form.modelId]: {
@@ -118,12 +139,31 @@ export const useStudio = create<StudioState>()(
           const { modelId, drafts } = get();
           if (modelId) set({ drafts: { ...drafts, [modelId]: initialDraft(modelId) } });
         },
-        setShowHidden: (showHidden) => set({ showHidden }),
+        setFilter: (output, patch) => set((s) => ({ filters: { ...s.filters, [output]: { ...s.filters[output], ...patch } } })),
+        resetFilter: (output) => set((s) => ({ filters: { ...s.filters, [output]: defaultFilter() } })),
       };
     },
-    { name: 'ark.studio.v1', version: 1 },
+    {
+      name: 'ark.studio.v1',
+      version: 2,
+      // v1 → v2：showHidden（显示已弃用模型）并入两种类型的"状态"筛选
+      migrate: (persisted, version) => migrateStudio(persisted, version) as unknown as StudioState,
+    },
   ),
 );
+
+/** 持久化数据迁移（导出给测试） */
+export function migrateStudio(persisted: unknown, version: number): Record<string, unknown> {
+  const state = { ...((persisted ?? {}) as Record<string, unknown>) };
+  if (version < 2) {
+    const filters = defaultFilters();
+    if (state.showHidden === true) for (const f of Object.values(filters)) f.include = [...f.include, 'deprecated'];
+    delete state.showHidden;
+    state.filters = filters;
+    state.lastByOutput = rememberLast({}, typeof state.modelId === 'string' ? state.modelId : null);
+  }
+  return state;
+}
 
 /** 当前草稿 → 提交用的表单快照 */
 export function currentForm(state: Pick<StudioState, 'modelId' | 'drafts'>): FormInput | null {

@@ -21,8 +21,7 @@
     "image": "图像",
     "video": "视频",
     "noModels": "没有可用模型",
-    "showHidden": "显示已弃用模型",
-    "pickModel": "请从左侧选择模型",
+    "pickModel": "请先选择模型",
     "reset": "重置该模型的表单",
     "prompt": "提示词",
     "required": "必填",
@@ -42,7 +41,10 @@
       "extend": "延长视频",
       "reuse": "复用结果",
       "clear": "取消"
-    }
+    },
+    "outputType": "输出类型",
+    "model": "模型",
+    "modelCurrent": "模型：{{name}}（{{provider}}）"
   },
   "settings": {
     "title": "设置",
@@ -203,5 +205,44 @@
     "title": "数据",
     "rebuild": "从 outputs 重建历史",
     "rebuildDone": "扫描 {{scanned}} 个结果目录，恢复 {{restored}} 条任务"
+  },
+  "modelFilter": {
+    "title": "筛选",
+    "provider": "服务商",
+    "inputs": "输入方式",
+    "features": "特性",
+    "status": "状态",
+    "allOf": "勾选多项时，需同时满足",
+    "statusHint": "正式模型始终显示",
+    "clear": "清除筛选",
+    "count": "{{n}} / {{total}} 个模型",
+    "noMatch": "没有符合筛选条件的模型",
+    "currentHidden": "当前模型「{{name}}」不符合筛选条件",
+    "input": {
+      "text": "文生",
+      "first_frame": "首帧",
+      "first_last": "首尾帧",
+      "ref_image": "参考图",
+      "ref_video": "参考视频",
+      "ref_audio": "参考音频"
+    },
+    "feature": {
+      "audio": "有声",
+      "edit_extend": "视频编辑 / 延长",
+      "draft": "样片（Draft）",
+      "flex": "离线半价",
+      "group": "组图",
+      "layers": "图层分解",
+      "transparent": "透明背景"
+    },
+    "featureHelp": {
+      "edit_extend": "有专门的编辑 / 延长模式；Seedance 2.0 系列只能在全模态参考里用提示词实现，不计入",
+      "flex": "service_tier=flex，价格为在线的 50%",
+      "audio": "可以生成带声音的视频"
+    },
+    "include": {
+      "experimental": "包含实验模型",
+      "deprecated": "包含已弃用模型"
+    }
   }
 }

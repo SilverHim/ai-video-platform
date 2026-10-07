@@ -21,8 +21,7 @@
     "image": "Image",
     "video": "Video",
     "noModels": "No models available",
-    "showHidden": "Show retired models",
-    "pickModel": "Pick a model on the left",
+    "pickModel": "Pick a model first",
     "reset": "Reset this model's form",
     "prompt": "Prompt",
     "required": "Required",
@@ -42,7 +41,10 @@
       "extend": "Extend video",
       "reuse": "Reuse result",
       "clear": "Cancel"
-    }
+    },
+    "outputType": "Output type",
+    "model": "Model",
+    "modelCurrent": "Model: {{name}} ({{provider}})"
   },
   "settings": {
     "title": "Settings",
@@ -203,5 +205,44 @@
     "title": "Data",
     "rebuild": "Rebuild history from outputs",
     "rebuildDone": "Scanned {{scanned}} result folders, restored {{restored}} tasks"
+  },
+  "modelFilter": {
+    "title": "Filter",
+    "provider": "Provider",
+    "inputs": "Inputs",
+    "features": "Features",
+    "status": "Status",
+    "allOf": "When several are checked, all must match",
+    "statusHint": "Stable models are always shown",
+    "clear": "Clear filters",
+    "count": "{{n}} / {{total}} models",
+    "noMatch": "No models match the filters",
+    "currentHidden": "The current model “{{name}}” does not match the filters",
+    "input": {
+      "text": "Text only",
+      "first_frame": "First frame",
+      "first_last": "First + last frame",
+      "ref_image": "Reference image",
+      "ref_video": "Reference video",
+      "ref_audio": "Reference audio"
+    },
+    "feature": {
+      "audio": "Audio",
+      "edit_extend": "Video edit / extend",
+      "draft": "Draft",
+      "flex": "Offline (half price)",
+      "group": "Image sets",
+      "layers": "Layer decomposition",
+      "transparent": "Transparent background"
+    },
+    "featureHelp": {
+      "edit_extend": "Has dedicated edit / extend modes; Seedance 2.0 can only do it via prompts in omni-reference mode and is not counted",
+      "flex": "service_tier=flex at 50% of the online price",
+      "audio": "Can generate video with sound"
+    },
+    "include": {
+      "experimental": "Include experimental models",
+      "deprecated": "Include retired models"
+    }
   }
 }
