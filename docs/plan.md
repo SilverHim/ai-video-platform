@@ -15,7 +15,7 @@
 | 项 | 决定 |
 |---|---|
 | 场景 | 仅本机使用，服务只监听 127.0.0.1 |
-| 技术栈 | 前端 React 18 + Vite + TypeScript + Tailwind v4；本机服务 Hono（@hono/node-server）；**Node 26**，用户升级，`engines >=24.15`，CI 在 24/26 上测 |
+| 技术栈 | 前端 React 19（react-router 8 要求 ≥19.2.7，原定 18）+ Vite + TypeScript + Tailwind v4；本机服务 Hono（@hono/node-server）；**Node 26**，用户升级，`engines >=24.15`，CI 在 24/26 上测 |
 | 服务商/模型 | **BytePlus**：Seedream（5.0 pro/flash/lite、4.5、4.0）、Seedance（2.5、2.0/fast/mini、1.0 pro/pro fast；1.5 pro 已 Retired，默认隐藏）。**MiniMax 国际站**：image-01 / image-01-live；视频**只接 H3（V2）**，即 MiniMax-H3 / H3-Max |
 | Key | 存在 `<dataDir>/keys.json`（mac 权限 0600），可用环境变量 `ARK_API_KEY` / `MINIMAX_API_KEY` 覆盖。网页设置页负责读写，显示时打码、可清除。网页与 MCP 共用这一份，浏览器不另存。Key 永不进日志、不进 Git |
 | 任务/历史 | **本机服务的 SQLite（`node:sqlite`）是唯一事实来源**，存任务、结果、交换记录、素材、预设、模板，网页和 MCP 共享。轮询调度器跑在服务里，关掉网页任务照样完成并落盘。网页通过 SSE `/api/events` 实时刷新 |

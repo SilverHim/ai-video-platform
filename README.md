@@ -28,4 +28,4 @@
 
 ## 技术栈
 
-React 18 + Vite + TypeScript + Tailwind v4；本机服务 Hono（Node.js ≥ 24.15，推荐 26）；SQLite（`node:sqlite`）；MCP TypeScript SDK。
+React 19 + Vite + TypeScript 6.0（typescript-eslint 尚不支持 TS 7）+ Tailwind v4；本机服务 Hono（Node.js ≥ 24.15，推荐 26）；SQLite（`node:sqlite`）；MCP TypeScript SDK。

@@ -1,0 +1,22 @@
+{
+  "app": { "title": "AI视频生成平台" },
+  "nav": { "studio": "工作台", "history": "历史", "library": "预设与模板", "settings": "设置" },
+  "health": { "online": "服务在线", "offline": "服务未连接", "mock": "Mock 模式" },
+  "lang": { "switch": "English" },
+  "studio": { "placeholder": "工作台正在开发中：模型选择、参数表单、请求预览会在后续阶段上线。" },
+  "settings": {
+    "title": "设置",
+    "keys": "API Key",
+    "keysHint": "Key 只保存在本机数据目录（{{dataDir}}），网页与 MCP 共用，不会进入浏览器存储和日志。",
+    "configured": "已配置",
+    "notConfigured": "未配置",
+    "fromEnv": "来自环境变量，网页无法修改",
+    "placeholder": "粘贴 API Key",
+    "save": "保存",
+    "clear": "清除",
+    "saved": "已保存",
+    "cleared": "已清除"
+  },
+  "provider": { "byteplus": "BytePlus ModelArk", "minimax": "MiniMax 国际站" },
+  "error": { "generic": "出错了：{{message}}" }
+}

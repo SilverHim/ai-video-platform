@@ -1,0 +1,22 @@
+{
+  "app": { "title": "AI Video Platform" },
+  "nav": { "studio": "Studio", "history": "History", "library": "Presets & Templates", "settings": "Settings" },
+  "health": { "online": "Service online", "offline": "Service offline", "mock": "Mock mode" },
+  "lang": { "switch": "中文" },
+  "studio": { "placeholder": "The studio is under construction: model picker, parameter form and request preview land in upcoming phases." },
+  "settings": {
+    "title": "Settings",
+    "keys": "API Keys",
+    "keysHint": "Keys are stored only in the local data directory ({{dataDir}}), shared by the web UI and MCP, never in browser storage or logs.",
+    "configured": "Configured",
+    "notConfigured": "Not configured",
+    "fromEnv": "Provided by environment variable (read-only here)",
+    "placeholder": "Paste API key",
+    "save": "Save",
+    "clear": "Clear",
+    "saved": "Saved",
+    "cleared": "Cleared"
+  },
+  "provider": { "byteplus": "BytePlus ModelArk", "minimax": "MiniMax (global)" },
+  "error": { "generic": "Error: {{message}}" }
+}
