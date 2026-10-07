@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { createAdaptorServer } from '@hono/node-server';
 import { createApp } from './app.js';
 import { ensureDataDirs, resolveConfig, type ResolvedConfig, type ServerOptions } from './config.js';
-import { Keystore } from './keystore.js';
+import { createContainer } from './container.js';
 import { projectRootFrom } from './platform/paths.js';
 
 export interface RunningServer {
@@ -27,9 +27,9 @@ function readVersion(root: string): string {
 export async function startServer(opts: ServerOptions & { version?: string }): Promise<RunningServer> {
   const config = resolveConfig(opts);
   ensureDataDirs(config.paths);
-  const keystore = new Keystore(config.paths.keys);
+  const container = createContainer(config);
   let boundPort = config.port;
-  const app = createApp({ config, keystore, version: opts.version ?? '0.0.0', getPort: () => boundPort });
+  const app = createApp({ config, keystore: container.keystore, store: container.store, services: container.services, version: opts.version ?? '0.0.0', getPort: () => boundPort });
 
   const server = createAdaptorServer({ fetch: app.fetch });
   // 大文件上传与长时间生成：关闭整体请求超时，保留请求头超时
@@ -63,13 +63,21 @@ export async function startServer(opts: ServerOptions & { version?: string }): P
       if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') break;
     }
   }
-  if (lastErr) throw lastErr;
+  if (lastErr) {
+    await container.close();
+    throw lastErr;
+  }
 
   return {
     url: `http://127.0.0.1:${boundPort}`,
     port: boundPort,
     config,
-    close: () => new Promise<void>((res, rej) => server.close((err) => (err ? rej(err) : res()))),
+    close: async () => {
+      // 先关监听（SSE 长连接需要强制断开），再关存储
+      if ('closeAllConnections' in server) server.closeAllConnections();
+      await new Promise<void>((res, rej) => server.close((err) => (err ? rej(err) : res())));
+      await container.close();
+    },
   };
 }
 

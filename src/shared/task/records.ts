@@ -1,0 +1,83 @@
+import type { FormInput } from '../catalog/types.js';
+import type { NormalizedError } from './errors.js';
+import type { LayerInfo, PartialFailure } from './results.js';
+import type { JobStatus } from './status.js';
+
+export type TaskOrigin = 'web' | 'mcp';
+export type CaptureState = 'none' | 'pending' | 'done' | 'partial' | 'failed';
+
+/** 本地保存的一个结果文件 */
+export interface ResultRecord {
+  id: string;
+  taskId: string;
+  index: number;
+  role: 'image' | 'video' | 'last_frame' | 'base' | 'layer';
+  kind: 'image' | 'video';
+  /** 相对 outputs 目录的路径（用 / 分隔），浏览器通过 /files/<path> 访问 */
+  path: string | null;
+  mime: string | null;
+  bytes: number | null;
+  width: number | null;
+  height: number | null;
+  /** 服务商原始链接（有时效） */
+  remoteUrl: string | null;
+  remoteExpiresAt: number | null;
+  layer: LayerInfo | null;
+}
+
+export interface TaskRecord {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  origin: TaskOrigin;
+  providerId: string;
+  modelId: string;
+  apiModel: string;
+  modeId: string;
+  kind: 'sync' | 'async';
+  status: JobStatus;
+  upstreamTaskId: string | null;
+  baseUrlId: string;
+  /** 提交时的表单快照（data URI 已截断），用于"复用参数" */
+  form: FormInput;
+  /** 实际发送的请求体（脱敏、截断） */
+  request: Record<string, unknown> | null;
+  error: NormalizedError | null;
+  failures: PartialFailure[];
+  usage: Record<string, unknown> | null;
+  /** 服务商返回的实际参数 */
+  actual: Record<string, unknown> | null;
+  capture: CaptureState;
+  /** 本地输出目录（相对 outputs） */
+  outputDir: string | null;
+  parentTaskId: string | null;
+  costEstimate: { amount: number; currency: 'USD' } | null;
+  favorite: boolean;
+  note: string | null;
+  results: ResultRecord[];
+}
+
+export interface ExchangeRecord {
+  id: number;
+  taskId: string;
+  at: number;
+  kind: 'submit' | 'poll' | 'final' | 'sse' | 'error' | 'cancel';
+  status: number | null;
+  /** 脱敏、截断后的响应文本 */
+  body: string;
+}
+
+export interface TaskListQuery {
+  limit?: number;
+  before?: number;
+  status?: string;
+  providerId?: string;
+  modelId?: string;
+  origin?: TaskOrigin;
+}
+
+/** /api/events 推送的事件 */
+export type ServerEvent =
+  | { type: 'task.updated'; task: TaskRecord }
+  | { type: 'task.deleted'; taskId: string }
+  | { type: 'ping'; at: number };

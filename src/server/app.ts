@@ -1,18 +1,39 @@
 import { Hono } from 'hono';
+import type { AssetStore } from './assets/asset-store.js';
+import type { CaptureService } from './capture/capture.js';
 import type { ResolvedConfig } from './config.js';
+import type { EventBus } from './events.js';
 import type { Keystore } from './keystore.js';
+import { accessLog } from './middleware/logger.js';
 import { localGuard, localHostSet, localOriginSet } from './middleware/local-guard.js';
 import { securityHeaders } from './middleware/security-headers.js';
+import { assetRoutes } from './routes/assets.js';
+import { eventRoutes } from './routes/events.js';
+import { fileRoutes } from './routes/files.js';
 import { healthRoutes } from './routes/health.js';
 import { keyRoutes } from './routes/keys.js';
+import { taskRoutes } from './routes/tasks.js';
 import { staticSite } from './static.js';
+import type { Store } from './store/store.js';
+import type { TaskService } from './tasks/task-service.js';
+
+export interface Services {
+  tasks: TaskService;
+  assets: AssetStore;
+  capture: CaptureService;
+  events: EventBus;
+}
 
 export interface AppDeps {
   config: ResolvedConfig;
   keystore: Keystore;
+  store: Store;
+  services: Services;
   version: string;
   /** 实际监听端口（listen 之后才知道，所以用函数） */
   getPort: () => number;
+  /** 测试时关闭访问日志 */
+  quiet?: boolean;
 }
 
 export function createApp(deps: AppDeps) {
@@ -23,12 +44,17 @@ export function createApp(deps: AppDeps) {
   };
 
   const app = new Hono();
+  app.use('*', accessLog(!deps.quiet));
   app.use('*', securityHeaders());
   app.use('*', localGuard({ allowedHosts: () => localHostSet(ports()), allowedOrigins: () => localOriginSet(ports()) }));
 
   app.route('/api/health', healthRoutes(deps));
   app.route('/api/keys', keyRoutes(deps));
+  app.route('/api/assets', assetRoutes(deps));
+  app.route('/api/events', eventRoutes(deps));
+  app.route('/api', taskRoutes(deps));
   app.all('/api/*', (c) => c.json({ error: { code: 'not_found', message: '接口不存在' } }, 404));
+  app.route('/files', fileRoutes(deps));
 
   if (deps.config.staticDir) app.use('*', staticSite(deps.config.staticDir));
 
