@@ -1,9 +1,42 @@
 {
-  "app": { "title": "AI Video Platform" },
-  "nav": { "studio": "Studio", "history": "History", "library": "Presets & Templates", "settings": "Settings" },
-  "health": { "online": "Service online", "offline": "Service offline", "mock": "Mock mode" },
-  "lang": { "switch": "中文" },
-  "studio": { "placeholder": "The studio is under construction: model picker, parameter form and request preview land in upcoming phases." },
+  "app": {
+    "title": "AI Video Platform"
+  },
+  "nav": {
+    "studio": "Studio",
+    "history": "History",
+    "library": "Presets & Templates",
+    "settings": "Settings"
+  },
+  "health": {
+    "online": "Service online",
+    "offline": "Service offline",
+    "mock": "Mock mode"
+  },
+  "lang": {
+    "switch": "中文"
+  },
+  "studio": {
+    "placeholder": "The studio is under construction: model picker, parameter form and request preview land in upcoming phases.",
+    "image": "Image",
+    "video": "Video",
+    "noModels": "No models available",
+    "showHidden": "Show retired models",
+    "pickModel": "Pick a model on the left",
+    "reset": "Reset this model's form",
+    "prompt": "Prompt",
+    "required": "Required",
+    "promptPlaceholder": "Describe the result; type @ to reference assets",
+    "params": "Parameters",
+    "modelOverride": "Endpoint ID override (optional)",
+    "modelOverrideHint": "If your account disables Model ID calls, enter an inference endpoint ID (ep-…)",
+    "submit": "Generate",
+    "submitting": "Generating…",
+    "tabPreview": "Request",
+    "tabResult": "Result",
+    "tabQueue": "Queue",
+    "noResult": "Results appear here after you submit"
+  },
   "settings": {
     "title": "Settings",
     "keys": "API Keys",
@@ -15,8 +48,91 @@
     "save": "Save",
     "clear": "Clear",
     "saved": "Saved",
-    "cleared": "Cleared"
+    "cleared": "Cleared",
+    "test": "Test key (free)",
+    "testOk": "Key works",
+    "testFail": "Key failed: {{message}}"
   },
-  "provider": { "byteplus": "BytePlus ModelArk", "minimax": "MiniMax (global)" },
-  "error": { "generic": "Error: {{message}}" }
+  "provider": {
+    "byteplus": "BytePlus ModelArk",
+    "minimax": "MiniMax (global)"
+  },
+  "error": {
+    "generic": "Error: {{message}}"
+  },
+  "params": {
+    "experimental": "Experimental",
+    "docs": "Official docs",
+    "group": {
+      "basic": "Basic",
+      "advanced": "Advanced",
+      "output": "Output"
+    },
+    "sizePreset": "Preset",
+    "sizeCustom": "Custom",
+    "pixels": "Pixels",
+    "side": "Side",
+    "fillFromPreset": "Fill from preset",
+    "seedRandom": "Random",
+    "seedDice": "Roll",
+    "seedClear": "Back to random"
+  },
+  "assets": {
+    "insertRef": "Reference in prompt",
+    "local": "Local file",
+    "uploading": "Uploading…",
+    "addUrl": "Add",
+    "tooMany": "At most {{max}}; extras ignored",
+    "assetNotAllowed": "asset:// is not allowed here",
+    "httpsOnly": "Only https:// links are accepted"
+  },
+  "issues": {
+    "fix": "Fix"
+  },
+  "preview": {
+    "empty": "Fill in the form to preview",
+    "copy": "Copy",
+    "copied": "Copied",
+    "note": "data URIs are truncated; the key in curl is an env var placeholder and running it is billed again.",
+    "cost": "Estimated cost"
+  },
+  "results": {
+    "notSaved": "Not saved locally",
+    "cannotPlay": "The browser cannot play this video (possibly 10-bit HEVC); download it and use a system player",
+    "useAsRef": "Use as reference",
+    "reuse": "Reuse parameters",
+    "failures": "{{n}} blocked or failed"
+  },
+  "queue": {
+    "empty": "No tasks yet",
+    "delete": "Delete local record"
+  },
+  "history": {
+    "detail": "Task details",
+    "prompt": "Prompt",
+    "request": "Request sent (redacted)",
+    "raw": "Raw responses",
+    "outputDir": "Local folder",
+    "allProviders": "All providers",
+    "allStatus": "All statuses"
+  },
+  "status": {
+    "awaiting_consent": "Awaiting consent",
+    "resolving_assets": "Preparing assets",
+    "submitting": "Submitting",
+    "submit_unknown": "Unknown",
+    "queued": "Queued",
+    "running": "Running",
+    "streaming": "Streaming",
+    "succeeded": "Succeeded",
+    "partial": "Partial",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "expired": "Expired",
+    "unknown": "Unknown"
+  },
+  "lifecycle": {
+    "retiring": "Retiring",
+    "retired": "Retired"
+  }
 }

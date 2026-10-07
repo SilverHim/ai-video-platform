@@ -3,10 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useOutletContext } from 'react-router';
 import type { HealthInfo, KeyStatus, ProviderId } from '../../../shared/api-contract';
 import { api, ApiRequestError } from '../../lib/api-client';
+import { useText } from '../../i18n/useText';
 
 function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeyStatus) => void }) {
   const { t } = useTranslation();
+  const tx = useText();
   const [value, setValue] = useState('');
+  const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const readOnly = status.source === 'env';
 
@@ -62,6 +65,24 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeySta
           </button>
         </form>
       )}
+      {status.configured ? (
+        <button
+          type="button"
+          className="mt-2 rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs disabled:opacity-50"
+          disabled={testing}
+          onClick={() => {
+            setTesting(true);
+            setMessage(null);
+            api
+              .testKey(status.provider as ProviderId)
+              .then((r) => setMessage(r.ok ? t('settings.testOk') : t('settings.testFail', { message: r.error ? `${r.error.code} ${r.error.hint ? tx(r.error.hint) : r.error.message}` : `HTTP ${r.status}` })))
+              .catch((e: unknown) => setMessage(t('error.generic', { message: e instanceof Error ? e.message : String(e) })))
+              .finally(() => setTesting(false));
+          }}
+        >
+          {t('settings.test')}
+        </button>
+      ) : null}
       {message ? <p className="mt-2 text-sm text-[var(--color-muted)]">{message}</p> : null}
     </div>
   );

@@ -1,9 +1,42 @@
 {
-  "app": { "title": "AI视频生成平台" },
-  "nav": { "studio": "工作台", "history": "历史", "library": "预设与模板", "settings": "设置" },
-  "health": { "online": "服务在线", "offline": "服务未连接", "mock": "Mock 模式" },
-  "lang": { "switch": "English" },
-  "studio": { "placeholder": "工作台正在开发中：模型选择、参数表单、请求预览会在后续阶段上线。" },
+  "app": {
+    "title": "AI视频生成平台"
+  },
+  "nav": {
+    "studio": "工作台",
+    "history": "历史",
+    "library": "预设与模板",
+    "settings": "设置"
+  },
+  "health": {
+    "online": "服务在线",
+    "offline": "服务未连接",
+    "mock": "Mock 模式"
+  },
+  "lang": {
+    "switch": "English"
+  },
+  "studio": {
+    "placeholder": "工作台正在开发中：模型选择、参数表单、请求预览会在后续阶段上线。",
+    "image": "图像",
+    "video": "视频",
+    "noModels": "没有可用模型",
+    "showHidden": "显示已弃用模型",
+    "pickModel": "请从左侧选择模型",
+    "reset": "重置该模型的表单",
+    "prompt": "提示词",
+    "required": "必填",
+    "promptPlaceholder": "描述你想要的画面，输入 @ 引用素材",
+    "params": "参数",
+    "modelOverride": "Endpoint ID 覆盖（可选）",
+    "modelOverrideHint": "账号禁用 Model ID 调用时，填自建推理接入点 ID（ep-…）",
+    "submit": "提交生成",
+    "submitting": "生成中…",
+    "tabPreview": "请求预览",
+    "tabResult": "结果",
+    "tabQueue": "队列",
+    "noResult": "提交后在这里查看结果"
+  },
   "settings": {
     "title": "设置",
     "keys": "API Key",
@@ -15,8 +48,91 @@
     "save": "保存",
     "clear": "清除",
     "saved": "已保存",
-    "cleared": "已清除"
+    "cleared": "已清除",
+    "test": "测试 Key（不计费）",
+    "testOk": "Key 可用",
+    "testFail": "Key 不可用：{{message}}"
   },
-  "provider": { "byteplus": "BytePlus ModelArk", "minimax": "MiniMax 国际站" },
-  "error": { "generic": "出错了：{{message}}" }
+  "provider": {
+    "byteplus": "BytePlus ModelArk",
+    "minimax": "MiniMax 国际站"
+  },
+  "error": {
+    "generic": "出错了：{{message}}"
+  },
+  "params": {
+    "experimental": "实验",
+    "docs": "官方文档",
+    "group": {
+      "basic": "基础",
+      "advanced": "高级",
+      "output": "输出"
+    },
+    "sizePreset": "档位",
+    "sizeCustom": "自定义",
+    "pixels": "总像素",
+    "side": "边长",
+    "fillFromPreset": "按参考尺寸填入",
+    "seedRandom": "随机",
+    "seedDice": "随机一个",
+    "seedClear": "改回随机"
+  },
+  "assets": {
+    "insertRef": "在提示词中引用",
+    "local": "本地文件",
+    "uploading": "上传中…",
+    "addUrl": "添加",
+    "tooMany": "最多 {{max}} 个，多余的已忽略",
+    "assetNotAllowed": "该槽位不支持 asset://",
+    "httpsOnly": "只接受 https:// 链接"
+  },
+  "issues": {
+    "fix": "一键修复"
+  },
+  "preview": {
+    "empty": "填写表单后显示",
+    "copy": "复制",
+    "copied": "已复制",
+    "note": "data URI 已截断；curl 中的 Key 用环境变量占位，复制运行会再次计费。",
+    "cost": "预估费用"
+  },
+  "results": {
+    "notSaved": "未能保存到本地",
+    "cannotPlay": "浏览器无法播放这个视频（可能是 10-bit HEVC），请下载后用系统播放器打开",
+    "useAsRef": "用作参考图",
+    "reuse": "复用参数",
+    "failures": "{{n}} 张被拦截或失败"
+  },
+  "queue": {
+    "empty": "还没有任务",
+    "delete": "删除本地记录"
+  },
+  "history": {
+    "detail": "任务详情",
+    "prompt": "提示词",
+    "request": "发送的请求（已脱敏）",
+    "raw": "原始响应",
+    "outputDir": "本地目录",
+    "allProviders": "全部服务商",
+    "allStatus": "全部状态"
+  },
+  "status": {
+    "awaiting_consent": "待确认",
+    "resolving_assets": "准备素材",
+    "submitting": "提交中",
+    "submit_unknown": "结果未知",
+    "queued": "排队中",
+    "running": "生成中",
+    "streaming": "流式生成中",
+    "succeeded": "成功",
+    "partial": "部分成功",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "expired": "已过期",
+    "unknown": "未知"
+  },
+  "lifecycle": {
+    "retiring": "即将下线",
+    "retired": "已下线"
+  }
 }

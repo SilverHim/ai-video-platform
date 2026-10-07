@@ -4,10 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet } from 'react-router';
 import { setLanguage } from '../i18n';
 import { useHealth } from './useHealth';
+import { useEffect } from 'react';
+import { startTaskSync } from '../stores/tasks';
 
 export function Layout() {
   const { t, i18n } = useTranslation();
   const { health, online } = useHealth();
+  useEffect(() => startTaskSync(), []);
   const navItem = ({ isActive }: { isActive: boolean }) =>
     clsx('rounded-md px-3 py-1.5 text-sm', isActive ? 'bg-[var(--color-accent)] text-white' : 'text-[var(--color-muted)] hover:text-[var(--color-text)]');
 
@@ -18,6 +21,9 @@ export function Layout() {
         <nav className="flex gap-1">
           <NavLink to="/" end className={navItem}>
             {t('nav.studio')}
+          </NavLink>
+          <NavLink to="/history" className={navItem}>
+            {t('nav.history')}
           </NavLink>
           <NavLink to="/settings" className={navItem}>
             {t('nav.settings')}
@@ -39,7 +45,7 @@ export function Layout() {
           </button>
         </div>
       </header>
-      <main className="flex-1 overflow-auto p-4">
+      <main className="min-h-0 flex-1 overflow-auto p-4">
         <Outlet context={{ health }} />
       </main>
     </div>

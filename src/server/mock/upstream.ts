@@ -26,9 +26,9 @@ function sizeOf(size: unknown): [number, number] {
   return [2048, 2048];
 }
 
-/** 实际生成的 mock 图片控制在 256 以内，避免占空间 */
+/** 实际生成的 mock 图片控制在 512 以内（512×512 正好满足图层分解的像素下限） */
 const small = (w: number, h: number): [number, number] => {
-  const s = Math.min(1, 256 / Math.max(w, h));
+  const s = Math.min(1, 512 / Math.max(w, h));
   return [Math.max(8, Math.round(w * s)), Math.max(8, Math.round(h * s))];
 };
 
