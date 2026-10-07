@@ -1,0 +1,56 @@
+{
+  "Err400": {
+    "type": "error",
+    "error": {
+      "type": "bad_request_error",
+      "message": "invalid params, content must include a non-empty text item (prompt is required) (2013)",
+      "http_code": "400"
+    },
+    "request_id": "021785229015510a2c883cf675b9804d"
+  },
+  "Err401": {
+    "type": "error",
+    "error": {
+      "type": "authorized_error",
+      "message": "login fail: Please carry the API secret key in the 'Authorization' field of the request header (1004)",
+      "http_code": "401"
+    },
+    "request_id": "021785229015510a2c883cf675b9804d"
+  },
+  "Err402": {
+    "type": "error",
+    "error": {
+      "type": "insufficient_balance_error",
+      "message": "insufficient balance (1008)",
+      "http_code": "402"
+    },
+    "request_id": "021785229015510a2c883cf675b9804d"
+  },
+  "Err422": {
+    "type": "error",
+    "error": {
+      "type": "unprocessable_entity_error",
+      "message": "video description contains sensitive content (1026)",
+      "http_code": "422"
+    },
+    "request_id": "021785229015510a2c883cf675b9804d"
+  },
+  "Err429": {
+    "type": "error",
+    "error": {
+      "type": "rate_limit_error",
+      "message": "rate limit, please retry later (1002)",
+      "http_code": "429"
+    },
+    "request_id": "021785229015510a2c883cf675b9804d"
+  },
+  "Err500": {
+    "type": "error",
+    "error": {
+      "type": "server_error",
+      "message": "internal error (1000)",
+      "http_code": "500"
+    },
+    "request_id": "021785229015510a2c883cf675b9804d"
+  }
+}

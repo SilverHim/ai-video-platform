@@ -93,7 +93,9 @@ export function checkAsset(asset: AssetRef, slot: SlotDef): MediaProblem[] {
     out.push({ severity: 'error', message: { zh: '需要带透明通道（alpha）的图片', en: 'An image with an alpha channel is required' } });
   }
   const verifiable = src.type === 'local' || src.type === 'task-output';
-  const missing = verifiable && (w === undefined || (spec.durationSec && meta?.durationSec === undefined) || (spec.requireAlpha && meta?.hasAlpha === undefined));
+  // 音频没有宽高，只看时长
+  const needsSize = slot.kind !== 'audio' && Boolean(spec.side || spec.pixels || spec.aspect || spec.minSideExclusive !== undefined);
+  const missing = verifiable && ((needsSize && w === undefined) || (spec.durationSec && meta?.durationSec === undefined) || (spec.requireAlpha && meta?.hasAlpha === undefined));
   if (missing) {
     out.push({ severity: 'warn', message: { zh: '部分规格未能读取，提交前无法完全校验', en: 'Some properties could not be read; not fully validated' } });
   }

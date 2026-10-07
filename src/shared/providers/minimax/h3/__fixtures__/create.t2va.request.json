@@ -1,0 +1,12 @@
+{
+  "model": "MiniMax-H3",
+  "content": [
+    {
+      "type": "text",
+      "text": "Epic space-opera theatrical teaser: a female captain stands alone before a massive observation window as the last fleet gathers and jumps away in a blinding flash, the bridge shaking, leaving her behind."
+    }
+  ],
+  "resolution": "2K",
+  "duration": 5,
+  "ratio": "16:9"
+}

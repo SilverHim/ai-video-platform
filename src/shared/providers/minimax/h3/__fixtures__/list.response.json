@@ -1,0 +1,69 @@
+{
+  "items": [
+    {
+      "id": "424635601932571",
+      "model": "MiniMax-H3",
+      "status": "succeeded",
+      "created_at": 1785225940,
+      "updated_at": 1785226100,
+      "content": {
+        "url": "https://video-product.cdn.minimax.io/inference_output/rollout/2026-07-28/5fe7ec4a-6f51-4d69-880e-220e59535d98/output.mp4"
+      },
+      "resolution": "2K",
+      "duration": 5,
+      "usage": {
+        "total_seconds": 5,
+        "input_seconds": 0,
+        "output_seconds": 5,
+        "input_image_count": 1,
+        "input_audio_seconds": 6,
+        "total_tokens": 273890,
+        "prompt_tokens": 13500,
+        "completion_tokens": 260390
+      },
+      "ratio": "adaptive",
+      "task_type": "generation"
+    },
+    {
+      "id": "424635601932588",
+      "model": "MiniMax-H3",
+      "status": "running",
+      "created_at": 1785225940,
+      "updated_at": 1785226100,
+      "resolution": "2K",
+      "duration": 10,
+      "usage": {},
+      "ratio": "9:16",
+      "task_type": "generation"
+    },
+    {
+      "id": "424635601932587",
+      "model": "MiniMax-H3",
+      "status": "queued",
+      "created_at": 1785225940,
+      "updated_at": 1785226100,
+      "resolution": "2K",
+      "duration": 8,
+      "usage": {},
+      "ratio": "9:16",
+      "task_type": "generation"
+    },
+    {
+      "id": "424635601932586",
+      "model": "MiniMax-H3",
+      "status": "failed",
+      "created_at": 1785225940,
+      "updated_at": 1785226100,
+      "error": {
+        "code": "1026",
+        "message": "video description contains sensitive content"
+      },
+      "resolution": "2K",
+      "duration": 12,
+      "usage": {},
+      "ratio": "9:16",
+      "task_type": "generation"
+    }
+  ],
+  "total": 476
+}

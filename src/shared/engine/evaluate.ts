@@ -121,6 +121,8 @@ export function evaluate(provider: ProviderDef, model: ModelDef, input: FormInpu
       }
     }
     state.sent = visible && !disabledReason && (f.send ?? 'always') !== 'never';
+    // 值被自动调整时也记一条 info，MCP 等不看表单的调用方才能注意到
+    if (state.adjusted && state.sent) issues.push({ id: `adjusted:${f.key}`, severity: 'info', fields: [f.key], message: state.adjusted });
     fields[f.key] = state;
   }
 
@@ -155,7 +157,10 @@ export function evaluate(provider: ProviderDef, model: ModelDef, input: FormInpu
           const fallback = isSizeValue(dflt) && dflt.mode === 'preset' ? dflt : { mode: 'preset' as const, value: spec.presets[0]?.value ?? '' };
           values[f.key] = fallback;
           st.value = fallback;
-          if (fallback.value) st.adjusted = T(`当前模型不支持自定义宽高，已改为「${fallback.value}」`, `Custom size is not supported here; switched to "${fallback.value}"`);
+          if (fallback.value) {
+            st.adjusted = T(`当前模型不支持自定义宽高，已改为「${fallback.value}」`, `Custom size is not supported here; switched to "${fallback.value}"`);
+            issues.push({ id: `adjusted:${f.key}`, severity: 'info', fields: [f.key], message: st.adjusted });
+          }
           else issues.push({ id: `size-custom:${f.key}`, severity: 'error', fields: [f.key], message: T('当前模型不支持自定义宽高', 'Custom width/height is not supported by this model') });
         } else {
           const { width: w, height: h } = v;
