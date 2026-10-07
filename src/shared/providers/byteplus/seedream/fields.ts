@@ -62,6 +62,8 @@ export function promptModeField(p: SeedreamProfile): FieldDef {
   return {
     key: 'optimize_prompt_mode',
     type: 'enum',
+    // 下拉框：flash / lite / 4.5 只有"标准"一项，下拉能看出只有这一项
+    control: 'select',
     label: T('提示词优化', 'Prompt optimization'),
     group: 'advanced',
     // EnumOption 没有 experimental，只能整字段标实验（standard 本身无争议）

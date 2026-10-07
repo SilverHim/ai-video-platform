@@ -142,7 +142,9 @@ function Control({ field, state, evaluated, onChange }: { field: FieldDef; state
         disabled: Boolean(o.disabledReason),
         title: o.disabledReason ? tx(o.disabledReason) : o.value,
       }));
-      if ((field.control ?? (opts.length <= 4 ? 'segmented' : 'select')) === 'segmented') {
+      // 只有一个选项时一律用下拉框：看得出"只有这一项"，而不是像分段按钮那样"点不动"
+      const control = opts.length === 1 ? 'select' : (field.control ?? (opts.length <= 4 ? 'segmented' : 'select'));
+      if (control === 'segmented') {
         return <Segmented value={String(state.value)} options={opts} disabled={disabled} onChange={(v) => onChange(field.key, v)} />;
       }
       return (
@@ -150,6 +152,7 @@ function Control({ field, state, evaluated, onChange }: { field: FieldDef; state
           {all.map((o) => (
             <option key={o.value} value={o.value} disabled={Boolean(o.disabledReason)}>
               {o.label ? `${tx(o.label)}（${o.value}）` : o.value}
+              {o.badge ? ` · ${tx(o.badge)}` : ''}
             </option>
           ))}
         </select>
