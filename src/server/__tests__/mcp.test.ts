@@ -98,7 +98,9 @@ describe('MCP 工具（v2 客户端，2026-07-28 协议）', () => {
     const out = text(res);
     expect(out.status).toBe('succeeded');
     expect(out.files[0].path.startsWith(running.dataDir)).toBe(true);
-    expect((res.content as { type: string }[]).some((c) => c.type === 'image')).toBe(true);
+    // 有 ffmpeg 时内联缩略图；没有（例如 CI）时附说明，路径照样返回
+    const blocks = res.content as { type: string; text?: string }[];
+    expect(blocks.some((c) => c.type === 'image') || blocks.some((c) => c.type === 'text' && c.text?.includes('ffmpeg'))).toBe(true);
     const list = text(await client.callTool({ name: 'list_tasks', arguments: {} }));
     expect(list[0].task_id).toBe(out.task_id);
     await client.close();
