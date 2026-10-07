@@ -24,11 +24,11 @@ export function useCurrentForm(): { form: FormInput | null; evaluated: Evaluated
 }
 
 /** 服务端预览（请求体、curl、体积、费用），防抖 200ms */
-export function usePreview(form: FormInput | null): { preview: PreviewResponse | null; loading: boolean; error: string | null } {
+export function usePreview(form: FormInput | null, tempHost?: string): { preview: PreviewResponse | null; loading: boolean; error: string | null } {
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const key = form ? JSON.stringify(form) : '';
+  const key = form ? JSON.stringify(form) + (tempHost ?? '') : '';
   const ctrl = useRef<AbortController | null>(null);
   useEffect(() => {
     if (!form) return;
@@ -38,7 +38,7 @@ export function usePreview(form: FormInput | null): { preview: PreviewResponse |
       ctrl.current = c;
       setLoading(true);
       api
-        .preview(form, c.signal)
+        .preview(form, c.signal, tempHost ? { tempHost } : {})
         .then((p) => {
           setPreview(p);
           setError(null);

@@ -36,8 +36,27 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+export interface ConsentInfo {
+  required: boolean;
+  target: { id: string; label: I18nText; ttlMs: number; maxBytes: number; homepage?: string };
+  files: { name: string; bytes: number | null }[];
+}
+
+export interface SubmitOpts {
+  /** 已同意把本地视频上传到公共临时托管站 */
+  consent?: boolean;
+  /** uguu / tmpfiles */
+  tempHost?: string;
+}
+
+const submitHeaders = (o: SubmitOpts = {}): Record<string, string> => ({
+  ...(o.consent ? { 'x-upload-consent': '1' } : {}),
+  ...(o.tempHost ? { 'x-upload-target': o.tempHost } : {}),
+});
+
 export interface PreviewResponse {
   canSubmit: boolean;
+  uploads: ConsentInfo;
   issues: Issue[];
   request: { method: string; url: string; body: Record<string, unknown>; bodyBytes: number; stream: boolean; endpointId: string };
   curl: string;
@@ -87,12 +106,12 @@ export const api = {
   clearKey: (provider: ProviderId) => request<{ key: KeyStatus }>(`/api/keys/${provider}`, { method: 'DELETE' }),
   testKey: (provider: ProviderId) => request<{ ok: boolean; status?: number; error?: NormalizedError }>(`/api/keys/${provider}/test`, { method: 'POST', body: '{}' }),
 
-  preview: (form: FormInput, signal?: AbortSignal) => request<PreviewResponse>('/api/preview', { method: 'POST', body: JSON.stringify({ form }), ...(signal ? { signal } : {}) }),
-  submit: (form: FormInput) => request<{ task: TaskRecord }>('/api/tasks', { method: 'POST', body: JSON.stringify({ form }) }).then((r) => r.task),
+  preview: (form: FormInput, signal?: AbortSignal, opts: SubmitOpts = {}) => request<PreviewResponse>('/api/preview', { method: 'POST', body: JSON.stringify({ form }), headers: submitHeaders(opts), ...(signal ? { signal } : {}) }),
+  submit: (form: FormInput, opts: SubmitOpts = {}) => request<{ task: TaskRecord }>('/api/tasks', { method: 'POST', body: JSON.stringify({ form }), headers: submitHeaders(opts) }).then((r) => r.task),
 
   /** 流式提交：返回最终任务；过程中通过回调推送进度 */
-  async submitStream(form: FormInput, h: StreamHandlers = {}): Promise<TaskRecord | null> {
-    const res = await fetch('/api/tasks/stream', { method: 'POST', headers: headers({ 'content-type': 'application/json' }), body: JSON.stringify({ form }), credentials: 'same-origin' });
+  async submitStream(form: FormInput, h: StreamHandlers = {}, opts: SubmitOpts = {}): Promise<TaskRecord | null> {
+    const res = await fetch('/api/tasks/stream', { method: 'POST', headers: headers({ 'content-type': 'application/json', ...submitHeaders(opts) }), body: JSON.stringify({ form }), credentials: 'same-origin' });
     if (!res.ok) {
       const err = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string; i18n?: I18nText; issues?: Issue[] } } | null;
       throw new ApiRequestError(res.status, err?.error?.code ?? 'http_error', err?.error?.message ?? `HTTP ${res.status}`, err?.error?.i18n, err?.error?.issues ?? []);

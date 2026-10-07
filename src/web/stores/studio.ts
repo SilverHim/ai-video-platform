@@ -17,6 +17,9 @@ interface StudioState {
   modelId: string | null;
   drafts: Record<string, ModelDraft>;
   showHidden: boolean;
+  /** 本地视频上传用的临时托管站 */
+  tempHost: 'uguu' | 'tmpfiles';
+  setTempHost: (h: 'uguu' | 'tmpfiles') => void;
   selectModel: (modelId: string) => void;
   selectMode: (modeId: string) => void;
   setValue: (key: string, value: unknown) => void;
@@ -52,6 +55,8 @@ export const useStudio = create<StudioState>()(
         modelId: listModels()[0]?.model.id ?? null,
         drafts: {},
         showHidden: false,
+        tempHost: 'uguu',
+        setTempHost: (tempHost) => set({ tempHost }),
         selectModel: (modelId) => {
           const drafts = get().drafts;
           set({ modelId, drafts: drafts[modelId] ? drafts : { ...drafts, [modelId]: initialDraft(modelId) } });

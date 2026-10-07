@@ -10,6 +10,7 @@ import { api, ApiRequestError } from '../../lib/api-client';
 import { useStudio } from '../../stores/studio';
 import { useTasks } from '../../stores/tasks';
 import { Badge, Button, inputClass, Panel, Segmented } from '../../ui/primitives';
+import { ConsentDialog } from '../assets/ConsentDialog';
 import { SlotList } from '../assets/SlotList';
 import { ParamRenderer } from '../params/ParamRenderer';
 import { RequestPreview } from '../preview/RequestPreview';
@@ -25,8 +26,9 @@ export function StudioPage() {
   const { t } = useTranslation();
   const tx = useText();
   const { form, evaluated } = useCurrentForm();
-  const { preview, loading, error } = usePreview(form);
-  const { selectMode, setValue, setPrompt, resetModel, setModelOverride } = useStudio();
+  const { selectMode, setValue, setPrompt, resetModel, setModelOverride, tempHost, setTempHost } = useStudio();
+  const { preview, loading, error } = usePreview(form, tempHost);
+  const [consentOpen, setConsentOpen] = useState(false);
   const editor = useRef<PromptEditorHandle>(null);
   const [tab, setTab] = useState<RightTab>('preview');
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
@@ -57,16 +59,22 @@ export function StudioPage() {
   const issues = [...evaluated.issues, ...(preview?.issues.filter((i) => i.id.startsWith('guard:') || i.id === 'body:too-large') ?? [])];
   const canSubmit = evaluated.canSubmit && (preview ? preview.canSubmit : true) && !submitting;
 
-  const submit = async () => {
+  const submit = async (consent = false) => {
+    if (!consent && preview?.uploads.required) {
+      setConsentOpen(true);
+      return;
+    }
+    setConsentOpen(false);
+    const opts = { tempHost, ...(consent ? { consent: true } : {}) };
     setSubmitting(true);
     setSubmitIssues([]);
     setSubmitError(null);
     setTab('result');
     try {
       if (evaluated.effective.stream === true) {
-        await api.submitStream(form, { onTask: (id) => setSelectedTask(id), onError: (e) => setSubmitError('message' in e ? e.message : String(e)) });
+        await api.submitStream(form, { onTask: (id) => setSelectedTask(id), onError: (e) => setSubmitError('message' in e ? e.message : String(e)) }, opts);
       } else {
-        const done = await api.submit(form);
+        const done = await api.submit(form, opts);
         useTasks.getState().upsert(done);
         setSelectedTask(done.id);
       }
@@ -142,7 +150,7 @@ export function StudioPage() {
           <IssuesPanel issues={[...issues, ...submitIssues]} />
           {submitError ? <p className="text-sm text-[var(--color-danger)]">{submitError}</p> : null}
           <div className="flex items-center gap-3">
-            <Button variant="primary" disabled={!canSubmit} onClick={() => void submit()} data-testid="submit">
+            <Button variant="primary" disabled={!canSubmit} onClick={() => void submit(false)} data-testid="submit">
               {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
               {submitting ? t('studio.submitting') : t('studio.submit')}
             </Button>
@@ -152,6 +160,9 @@ export function StudioPage() {
         </div>
       </div>
 
+      {consentOpen && preview?.uploads.required ? (
+        <ConsentDialog info={preview.uploads} tempHost={tempHost} onTempHost={setTempHost} onCancel={() => setConsentOpen(false)} onConfirm={() => void submit(true)} />
+      ) : null}
       <div className="space-y-3 lg:overflow-y-auto">
         <Segmented
           value={tab}
