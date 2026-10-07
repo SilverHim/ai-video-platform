@@ -211,6 +211,8 @@ export interface SlotDef {
 
 export interface PromptSpec {
   required: boolean | Pred;
+  /** false：该模型不支持在提示词里引用素材，界面隐藏"插入引用" */
+  refs?: false;
   /** 硬上限（字符数），超过报错 */
   maxChars?: number;
   /** 软上限：中文字数 / 英文单词数，超过只提示 */
@@ -407,8 +409,10 @@ export interface EndpointDef {
   timeoutMs: number;
   /** 'none'：不自动重试（创建类请求）；'idempotent'：网络错误 / 5xx 可重试 */
   retry: 'none' | 'idempotent';
-  /** 代理侧限速（每秒请求数） */
+  /** 代理侧限速（每秒请求数，可以是小数，例如 10/60 表示每分钟 10 次） */
   rps?: number;
+  /** 令牌桶容量（允许的突发请求数），默认 ceil(rps) */
+  burst?: number;
   stream?: boolean;
 }
 

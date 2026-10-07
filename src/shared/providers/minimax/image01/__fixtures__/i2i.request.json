@@ -1,0 +1,12 @@
+{
+  "model": "image-01",
+  "prompt": "A girl looking into the distance from a library window",
+  "aspect_ratio": "16:9",
+  "subject_reference": [
+    {
+      "type": "character",
+      "image_file": "https://cdn.hailuoai.com/prod/2025-08-12-17/video_cover/1754990600020238321-411603868533342214-cover.jpg"
+    }
+  ],
+  "n": 2
+}

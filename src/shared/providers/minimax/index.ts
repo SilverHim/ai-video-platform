@@ -18,7 +18,8 @@ export const minimax: ProviderDef = {
     ],
   },
   endpoints: {
-    'image.generate': { id: 'image.generate', method: 'POST', path: '/v1/image_generation', timeoutMs: 5 * 60_000, retry: 'none' },
+    // 官方限流 image-01 10 RPM：令牌桶 10 次突发、每 6 秒补 1 次
+    'image.generate': { id: 'image.generate', method: 'POST', path: '/v1/image_generation', timeoutMs: 5 * 60_000, retry: 'none', rps: 10 / 60, burst: 10 },
     'video.create': { id: 'video.create', method: 'POST', path: '/v2/video_generation', timeoutMs: 60_000, retry: 'none' },
     'video.get': { id: 'video.get', method: 'GET', path: '/v2/query/video_generation/{id}', timeoutMs: 20_000, retry: 'idempotent', rps: 5 },
     'video.list': { id: 'video.list', method: 'GET', path: '/v2/query/video_generation', timeoutMs: 20_000, retry: 'idempotent', rps: 1 },

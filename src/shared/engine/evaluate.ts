@@ -149,8 +149,15 @@ export function evaluate(provider: ProviderDef, model: ModelDef, input: FormInpu
       }
       if (v.mode === 'custom') {
         const cu = spec.custom;
-        if (!cu) issues.push({ id: `size-custom:${f.key}`, severity: 'error', fields: [f.key], message: T('当前模型不支持自定义宽高', 'Custom width/height is not supported by this model') });
-        else {
+        if (!cu) {
+          // 例如从支持自定义尺寸的模型切过来：回退到默认预设并提示
+          const dflt = fieldDefault(f, base);
+          const fallback = isSizeValue(dflt) && dflt.mode === 'preset' ? dflt : { mode: 'preset' as const, value: spec.presets[0]?.value ?? '' };
+          values[f.key] = fallback;
+          st.value = fallback;
+          if (fallback.value) st.adjusted = T(`当前模型不支持自定义宽高，已改为「${fallback.value}」`, `Custom size is not supported here; switched to "${fallback.value}"`);
+          else issues.push({ id: `size-custom:${f.key}`, severity: 'error', fields: [f.key], message: T('当前模型不支持自定义宽高', 'Custom width/height is not supported by this model') });
+        } else {
           const { width: w, height: h } = v;
           const px = w * h;
           const bad: string[] = [];

@@ -7,7 +7,7 @@ interface ArkErrorBody {
 }
 
 function categorize(status: number, code: string): ErrorCategory {
-  if (status === 401) return 'auth';
+  if (status === 401 || /^Authentication|Unauthorized/i.test(code)) return 'auth';
   if (/SensitiveContentDetected/i.test(code)) return 'content_policy';
   if (/^InvalidParameter\.TaskType/i.test(code)) return 'task_type';
   if (/ModelNotOpen|ServiceNotOpen/i.test(code)) return 'not_open';
@@ -18,6 +18,12 @@ function categorize(status: number, code: string): ErrorCategory {
   if (status === 404) return 'not_found';
   if (status === 400) return 'invalid_param';
   if (status >= 500) return 'upstream_5xx';
+  // HTTP 200 里的错误（同步结果顶层 error、组图单张 error、SSE error 帧）只能按错误码归类
+  if (/^(MissingParameter|InvalidParameter|InvalidImageURL|BadRequest)/i.test(code)) return 'invalid_param';
+  if (/RateLimit|ServerOverloaded|RequestBurstTooFast|InflightBatchsizeExceeded/i.test(code)) return 'rate_limit';
+  if (/^(InternalServiceError|InternalServerError)/i.test(code)) return 'upstream_5xx';
+  if (/^(AccessDenied|OperationDenied)/i.test(code)) return 'permission';
+  if (/NotFound/i.test(code)) return 'not_found';
   return 'unknown';
 }
 

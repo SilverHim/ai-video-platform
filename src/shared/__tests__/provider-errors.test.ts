@@ -47,3 +47,26 @@ describe('MiniMax 错误归一化', () => {
     expect(normalizeMiniMaxError(res(529, { type: 'error', error: { type: 'overloaded_error', message: 'overloaded' } }))!.category).toBe('upstream_5xx');
   });
 });
+
+describe('BytePlus HTTP 200 内的错误按错误码归类', () => {
+  it.each([
+    ['InvalidParameter', 'invalid_param'],
+    ['MissingParameter.prompt', 'invalid_param'],
+    ['InternalServiceError', 'upstream_5xx'],
+    ['OutputImageSensitiveContentDetected', 'content_policy'],
+    ['ModelAccountIpmRateLimitExceeded', 'rate_limit'],
+  ])('%s → %s', (code, category) => {
+    expect(normalizeBytePlusError(res(200, { error: { code, message: 'x' } }))?.category).toBe(category);
+  });
+});
+
+describe('MiniMax 补充错误码', () => {
+  it.each([
+    ['1024', 'upstream_5xx'],
+    ['1041', 'rate_limit'],
+    ['1042', 'invalid_param'],
+    ['2045', 'rate_limit'],
+  ])('%s → %s', (code, category) => {
+    expect(normalizeMiniMaxError(res(200, { base_resp: { status_code: Number(code), status_msg: 'x' } }))?.category).toBe(category);
+  });
+});

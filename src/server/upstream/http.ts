@@ -66,7 +66,7 @@ export class UpstreamClient {
     let lastErr: unknown;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
-        if (ep.rps) await this.limiter.acquire(`${c.provider.id}:${ep.id}`, ep.rps, { ...(c.signal ? { signal: c.signal } : {}) });
+        if (ep.rps) await this.limiter.acquire(`${c.provider.id}:${ep.id}`, ep.rps, { ...(ep.burst ? { burst: ep.burst } : {}), ...(c.signal ? { signal: c.signal } : {}) });
         const started = Date.now();
         const res = await this.raw(c, ep, url);
         const bodyText = await res.text();

@@ -27,7 +27,7 @@ function label(a: AssetRef): string {
   return s.uri;
 }
 
-function AssetItem({ a, slot, index, count, issues, onInsertRef }: { a: AssetRef; slot: SlotDef; index: number; count: number; issues: string[]; onInsertRef: (id: string) => void }) {
+function AssetItem({ a, slot, index, count, issues, onInsertRef }: { a: AssetRef; slot: SlotDef; index: number; count: number; issues: string[]; onInsertRef?: ((id: string) => void) | undefined }) {
   const { t } = useTranslation();
   const { moveAsset, removeAsset } = useStudio.getState();
   const src = thumbSrc(a);
@@ -54,9 +54,11 @@ function AssetItem({ a, slot, index, count, issues, onInsertRef }: { a: AssetRef
         ))}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        <Button size="sm" variant="ghost" title={t('assets.insertRef')} onClick={() => onInsertRef(a.id)}>
-          <AtSign size={12} />
-        </Button>
+        {onInsertRef ? (
+          <Button size="sm" variant="ghost" title={t('assets.insertRef')} onClick={() => onInsertRef(a.id)}>
+            <AtSign size={12} />
+          </Button>
+        ) : null}
         <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => moveAsset(slot.id, a.id, -1)}>
           <ArrowUp size={12} />
         </Button>
@@ -71,7 +73,7 @@ function AssetItem({ a, slot, index, count, issues, onInsertRef }: { a: AssetRef
   );
 }
 
-function SlotBox({ slot, evaluated, onInsertRef }: { slot: SlotDef; evaluated: EvaluatedForm; onInsertRef: (id: string) => void }) {
+function SlotBox({ slot, evaluated, onInsertRef }: { slot: SlotDef; evaluated: EvaluatedForm; onInsertRef?: ((id: string) => void) | undefined }) {
   const { t } = useTranslation();
   const tx = useText();
   const addAssets = useStudio((s) => s.addAssets);
@@ -178,7 +180,7 @@ function SlotBox({ slot, evaluated, onInsertRef }: { slot: SlotDef; evaluated: E
   );
 }
 
-export function SlotList({ evaluated, onInsertRef }: { evaluated: EvaluatedForm; onInsertRef: (id: string) => void }) {
+export function SlotList({ evaluated, onInsertRef }: { evaluated: EvaluatedForm; onInsertRef?: (id: string) => void }) {
   const slots = evaluated.ctx.mode.slots;
   if (!slots.length) return null;
   return (

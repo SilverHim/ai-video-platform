@@ -39,7 +39,7 @@ export function StudioPage() {
   const task = useTasks((s) => (selectedTask ? s.byId[selectedTask] : undefined));
 
   const refs = useMemo(() => {
-    if (!evaluated) return [];
+    if (!evaluated || evaluated.ctx.mode.prompt.refs === false) return [];
     const order = computeRefOrder(evaluated.ctx.mode, evaluated.ctx.input.slots);
     const labelOf = evaluated.ctx.mode.prompt.refLabel ?? ((k: string, n: number) => `${k === 'image' ? 'Image' : k === 'video' ? 'Video' : 'Audio'} ${n}`);
     return Object.entries(order).map(([id, info]) => ({ id, label: labelOf(info.kind, info.n), detail: info.slotId }));
@@ -133,7 +133,7 @@ export function StudioPage() {
               {mode.prompt.hint ? <p className="text-xs text-[var(--color-muted)]">{tx(mode.prompt.hint)}</p> : null}
             </div>
 
-            <SlotList evaluated={evaluated} onInsertRef={(id) => editor.current?.insertRef(id)} />
+            <SlotList evaluated={evaluated} {...(mode.prompt.refs === false ? {} : { onInsertRef: (id: string) => editor.current?.insertRef(id) })} />
           </div>
         </Panel>
 

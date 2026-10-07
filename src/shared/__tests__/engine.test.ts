@@ -150,3 +150,15 @@ describe('buildRequest', () => {
     expect(b.issues.map((i) => i.id)).toContain('body:too-large');
   });
 });
+
+describe('尺寸自动回退', () => {
+  it('模型不支持自定义宽高时回退到默认预设并提示', async () => {
+    const { demoModel: m, demoProvider: p, input: inp } = await import('./fixtures.js');
+    const sizeField = m.fields.find((f) => f.key === 'size')!;
+    const noCustom = { ...m, fields: m.fields.map((f) => (f.key === 'size' && f.type === 'size' ? { ...f, spec: () => ({ ...sizeField.type === 'size' ? sizeField.spec({} as never) : ({} as never), custom: undefined }) } : f)) } as typeof m;
+    const r = evaluate(p, noCustom, inp({ values: { size: { mode: 'custom', width: 64, height: 64 } } }));
+    expect(r.fields.size!.value).toEqual({ mode: 'preset', value: '1K' });
+    expect(r.fields.size!.adjusted?.zh).toContain('不支持自定义');
+    expect(r.canSubmit).toBe(true);
+  });
+});
