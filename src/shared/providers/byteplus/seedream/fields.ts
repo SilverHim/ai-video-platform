@@ -226,7 +226,10 @@ export function optimizePromptField(p: SeedreamProfile): FieldDef {
     key: 'optimize_prompt',
     type: 'bool',
     label: T('提示词优化开关', 'Prompt optimization on/off'),
-    help: T(`开着时不发送（保持服务端默认）；关掉时发送 optimize_prompt=false，并停用"提示词优化"模式。${CATALOG_SOURCE.zh}`, `When on, nothing is sent (server default); when off, sends optimize_prompt=false and disables the optimization mode. ${CATALOG_SOURCE.en}`),
+    help: T(
+      '关闭时请求里会加 optimize_prompt: false，并停用优化模式。API 文档未列出此参数，效果未验证。',
+      'When off, the request adds optimize_prompt: false and the optimization mode is disabled. Not in the API docs; effect unverified.',
+    ),
     group: 'advanced',
     experimental: true,
     modes: modeIdsOf(p).filter((m) => m !== 'layer'),
