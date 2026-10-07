@@ -177,10 +177,6 @@ export function backgroundField(): FieldDef {
  * optimize_prompt 效果未验证，仍标实验。
  * 图层分解模式不开放：目录元数据给图层分解的是另一套写法（layer_image / layer_size），与官方合约冲突。
  */
-const CATALOG_SOURCE = T(
-  '来源：模型目录元数据（arkcli models），API 文档未列出；已实测会被接受（5.0 flash），效果未验证。',
-  'Source: model catalog metadata (arkcli models), not in the API docs; verified to be accepted (5.0 flash), effect unverified.',
-);
 const SEED_MAX = 2_147_483_647;
 
 /**
