@@ -142,6 +142,7 @@ export const fakeCatalog: Catalog = {
     const model = fakeProvider.models.find((m) => m.id === id);
     return model ? { provider: fakeProvider, model } : undefined;
   },
+  listModels: () => fakeProvider.models.map((model) => ({ provider: fakeProvider, model })),
 };
 
 export const fakeForm = (over: Record<string, unknown> = {}) => ({ providerId: 'byteplus', modelId: 'fake/img', modeId: 'generate', values: {}, slots: {}, prompt: 'a cat', ...over });

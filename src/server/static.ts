@@ -9,7 +9,7 @@ export function staticSite(staticDir: string): MiddlewareHandler {
   return async (c, next) => {
     const method = c.req.method;
     const path = c.req.path;
-    if ((method !== 'GET' && method !== 'HEAD') || path.startsWith('/api/') || path.startsWith('/files/') || path === '/mcp') {
+    if ((method !== 'GET' && method !== 'HEAD') || path.startsWith('/api/') || path.startsWith('/files/') || path === '/mcp' || path.startsWith('/mcp/')) {
       return next();
     }
     const file = safeJoin(staticDir, path);

@@ -151,5 +151,18 @@
     "ack": "I understand the risks and agree to upload",
     "cancel": "Cancel",
     "confirm": "Agree and submit"
+  },
+  "mcp": {
+    "title": "MCP (let agents use this app)",
+    "intro": "Agents that support HTTP MCP (e.g. Claude Code) can connect with the command below; keep the app running.",
+    "url": "URL",
+    "copy": "Copy command",
+    "show": "Show token",
+    "hide": "Hide token",
+    "rotate": "Rotate token",
+    "rotateConfirm": "The old token stops working immediately and connected agents must re-run the command. Continue?",
+    "note1": "The command writes to ~/.claude.json (user scope), not to the project repo.",
+    "note2": "Generation tools are billed; results include an estimated cost. Public upload of local videos needs allow_public_upload from the agent.",
+    "note3": "Set this server's timeout to 600000 (10 min) in Claude Code; video tools accept wait_seconds."
   }
 }

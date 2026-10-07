@@ -104,6 +104,8 @@ export const api = {
   listKeys: () => request<{ keys: KeyStatus[] }>('/api/keys'),
   setKey: (provider: ProviderId, apiKey: string) => request<{ key: KeyStatus }>(`/api/keys/${provider}`, { method: 'PUT', body: JSON.stringify({ apiKey }) }),
   clearKey: (provider: ProviderId) => request<{ key: KeyStatus }>(`/api/keys/${provider}`, { method: 'DELETE' }),
+  mcpInfo: () => request<{ url: string; token: string; command: string }>('/api/mcp'),
+  rotateMcpToken: () => request<{ token: string }>('/api/mcp/rotate', { method: 'POST', body: '{}' }),
   testKey: (provider: ProviderId) => request<{ ok: boolean; status?: number; error?: NormalizedError }>(`/api/keys/${provider}/test`, { method: 'POST', body: '{}' }),
 
   preview: (form: FormInput, signal?: AbortSignal, opts: SubmitOpts = {}) => request<PreviewResponse>('/api/preview', { method: 'POST', body: JSON.stringify({ form }), headers: submitHeaders(opts), ...(signal ? { signal } : {}) }),

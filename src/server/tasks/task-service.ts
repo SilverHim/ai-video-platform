@@ -54,6 +54,7 @@ export interface PreviewResult {
 export interface Catalog {
   getProvider: (id: string) => ProviderDef | undefined;
   getModel: (id: string) => { provider: ProviderDef; model: ModelDef } | undefined;
+  listModels: (opts?: { includeHidden?: boolean }) => { provider: ProviderDef; model: ModelDef }[];
 }
 
 export interface TaskServiceDeps {

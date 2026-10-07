@@ -151,5 +151,18 @@
     "ack": "我已知晓上述风险，同意上传",
     "cancel": "取消",
     "confirm": "同意并提交"
+  },
+  "mcp": {
+    "title": "MCP 接入（让 agent 操作本平台）",
+    "intro": "Claude Code 等支持 HTTP MCP 的 agent 运行下面这条命令即可接入；平台需要保持运行。",
+    "url": "地址",
+    "copy": "复制接入命令",
+    "show": "显示令牌",
+    "hide": "隐藏令牌",
+    "rotate": "轮换令牌",
+    "rotateConfirm": "轮换后旧令牌立即失效，已接入的 agent 需要重新运行接入命令。继续？",
+    "note1": "命令写入 ~/.claude.json（user 作用域），不会进项目仓库。",
+    "note2": "agent 调用生成工具会产生费用，结果里附预估费用；本地视频公开上传需要 agent 显式传 allow_public_upload。",
+    "note3": "建议在 Claude Code 里把该服务器的 timeout 设为 600000（10 分钟），视频任务可用 wait_seconds 等待。"
   }
 }

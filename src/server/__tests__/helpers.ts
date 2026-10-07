@@ -32,7 +32,7 @@ export function makeApp(opts: MakeAppOptions = {}, env: NodeJS.ProcessEnv = {}) 
   const config = resolveConfig({ dataDir: tmp.dir, port: PORT, mock: true, ...serverOpts });
   ensureDataDirs(config.paths);
   const container = createContainer(config, { env: optEnv ?? env, ...(fetchImpl ? { fetchImpl } : {}), ...(downloader ? { downloader } : {}), ...(catalog ? { catalog } : {}) });
-  const app = createApp({ config, keystore: container.keystore, store: container.store, services: container.services, version: 'test', getPort: () => PORT, quiet: true });
+  const app = createApp({ config, keystore: container.keystore, store: container.store, services: container.services, version: 'test', getPort: () => PORT, quiet: true, ...(catalog ? { catalog } : {}) });
   return {
     app,
     config,
