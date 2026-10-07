@@ -180,19 +180,26 @@ const CATALOG_SOURCE = T(
 );
 const SEED_MAX = 2_147_483_647;
 
+/** 目录元数据给出的 negative_prompt 默认值 */
+export const NEGATIVE_PROMPT_DEFAULT = 'nsfw';
+
 export function negativePromptField(p: SeedreamProfile): FieldDef {
   return {
     key: 'negative_prompt',
     type: 'text',
     multiline: true,
     label: T('负向提示词', 'Negative prompt'),
-    help: T(`描述不希望出现在图里的内容；留空不发送（目录元数据称默认带 nsfw 安全过滤）。${CATALOG_SOURCE.zh}`, `What should not appear in the image; empty = not sent (catalog says the default includes an nsfw filter). ${CATALOG_SOURCE.en}`),
+    help: T(
+      `描述不希望出现在图里的内容。默认 nsfw（与目录元数据给的服务端默认一致，不发送）；清空会显式发送空字符串来覆盖默认，服务端是否接受、是否当成"没传"未验证；改成其他内容按原样发送。关闭后平台仍有基础内容安全策略，且须遵守 BytePlus Acceptable Use Policy。${CATALOG_SOURCE.zh}`,
+      `What should not appear in the image. Defaults to nsfw (same as the server default per catalog, not sent); clearing it sends an explicit empty string to override the default (whether the server accepts it or treats it as unset is unverified); any other text is sent as is. Baseline platform safety still applies, and the BytePlus Acceptable Use Policy must be followed. ${CATALOG_SOURCE.en}`,
+    ),
     group: 'advanced',
     experimental: true,
     modes: modeIdsOf(p).filter((m) => m !== 'layer'),
-    wire: 'negative_prompt',
-    send: 'if-set',
-    default: '',
+    wire: null,
+    // 等于默认值时不发送（请求体与不加这个字段时一致）；空字符串照发，用于覆盖服务端默认
+    fragment: (v) => (v === NEGATIVE_PROMPT_DEFAULT ? null : { negative_prompt: v }),
+    default: NEGATIVE_PROMPT_DEFAULT,
   };
 }
 

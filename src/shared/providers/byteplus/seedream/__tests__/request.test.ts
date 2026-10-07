@@ -95,7 +95,10 @@ describe('模型注册与能力矩阵', () => {
     expect(body).toMatchObject({ negative_prompt: 'text, watermark', seed: 42, optimize_prompt: false });
     expect(body).not.toHaveProperty('optimize_prompt_options');
     expect(ev.fields.optimize_prompt_mode).toMatchObject({ sent: false, disabledReason: { zh: '已关闭提示词优化' } });
-    expect(run(PRO, { values: { negative_prompt: '', seed: null, optimize_prompt: true } }).body).toEqual(run(PRO).body);
+    expect(run(PRO, { values: { negative_prompt: 'nsfw', seed: null, optimize_prompt: true } }).body).toEqual(run(PRO).body);
+    // 负向提示词默认 nsfw 不发送；清空时显式发送空字符串，覆盖服务端默认
+    expect(evalForm(PRO).effective.negative_prompt).toBe('nsfw');
+    expect(run(PRO, { values: { negative_prompt: '' } }).body).toMatchObject({ negative_prompt: '' });
     // 图层分解模式不开放这三个字段
     const layer = run(PRO, { modeId: 'layer', slots: { image: [localImg('a')] }, values: { negative_prompt: 'x', seed: 1, optimize_prompt: false } }).body;
     for (const k of ['negative_prompt', 'seed', 'optimize_prompt']) expect(layer).not.toHaveProperty(k);
