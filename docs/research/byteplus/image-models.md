@@ -266,6 +266,8 @@ data: [DONE]
 
 ## 6. 【arkcli 元数据】与官方文档的差异（只作参考，前端不应依赖）
 
+> 2026-10-08 补充：其中 `negative_prompt` / `seed` / `optimize_prompt` 已在 5.0 flash 实测，结果见 [catalog-params-test.md](catalog-params-test.md)。
+
 `arkcli models search seedream` 返回的 `supported_params` 有以下问题：
 
 - pro/flash 的 `stream` 标为 support=true，与正文“不支持”矛盾。

@@ -68,6 +68,8 @@ export function promptModeField(p: SeedreamProfile): FieldDef {
     ...(fastConflict ? { experimental: true } : {}),
     // 未核实：图层分解是否支持提示词优化（官方图层样例未传），保守不发
     modes: modeIdsOf(p).filter((m) => m !== 'layer'),
+    // 目录元数据：optimize_prompt_options 在 optimize_prompt=true 时生效；关掉优化时不再发送模式
+    ...(p.catalogParams ? { disabled: (c: PredCtx) => (c.values.optimize_prompt === false ? T('已关闭提示词优化', 'Prompt optimization is off') : null) } : {}),
     wire: 'optimize_prompt_options.mode',
     default: 'standard',
     options,
@@ -165,13 +167,77 @@ export function backgroundField(): FieldDef {
   };
 }
 
+/*
+ * 以下三个参数只出现在模型目录元数据（arkcli models get 的 supported_params，5.0 pro / flash 标 support=true），
+ * API 文档正文与官方 OpenAPI 合约都没有（2026-10-08 核对）。默认不发送。
+ * 2026-10-08 在 5.0 flash 实测（见 docs/research/byteplus/catalog-params-test.md）：三个字段都被接受；
+ * 同 seed 两次出图几乎一致（SSIM 0.999），seed 转为正式；negative_prompt / optimize_prompt 效果未验证，仍标实验。
+ * 图层分解模式不开放：目录元数据给图层分解的是另一套写法（layer_image / layer_size），与官方合约冲突。
+ */
+const CATALOG_SOURCE = T(
+  '来源：模型目录元数据（arkcli models），API 文档未列出；已实测会被接受（5.0 flash），效果未验证。',
+  'Source: model catalog metadata (arkcli models), not in the API docs; verified to be accepted (5.0 flash), effect unverified.',
+);
+const SEED_MAX = 2_147_483_647;
+
+export function negativePromptField(p: SeedreamProfile): FieldDef {
+  return {
+    key: 'negative_prompt',
+    type: 'text',
+    multiline: true,
+    label: T('负向提示词', 'Negative prompt'),
+    help: T(`描述不希望出现在图里的内容；留空不发送（目录元数据称默认带 nsfw 安全过滤）。${CATALOG_SOURCE.zh}`, `What should not appear in the image; empty = not sent (catalog says the default includes an nsfw filter). ${CATALOG_SOURCE.en}`),
+    group: 'advanced',
+    experimental: true,
+    modes: modeIdsOf(p).filter((m) => m !== 'layer'),
+    wire: 'negative_prompt',
+    send: 'if-set',
+    default: '',
+  };
+}
+
+export function catalogSeedField(p: SeedreamProfile): FieldDef {
+  return {
+    key: 'seed',
+    type: 'seed',
+    label: T('种子', 'Seed'),
+    help: T(
+      '留空不发送；-1 为随机，固定值可复现结果。API 文档未列出，来源是模型目录元数据；已在 5.0 flash 实测：同一种子两次出图几乎一致。',
+      'Empty = not sent; -1 = random, a fixed value reproduces results. Not in the API docs (source: model catalog metadata); verified on 5.0 flash: the same seed gave near-identical images.',
+    ),
+    group: 'advanced',
+    modes: modeIdsOf(p).filter((m) => m !== 'layer'),
+    wire: 'seed',
+    default: null,
+    min: -1,
+    max: SEED_MAX,
+  };
+}
+
+export function optimizePromptField(p: SeedreamProfile): FieldDef {
+  return {
+    key: 'optimize_prompt',
+    type: 'bool',
+    label: T('提示词优化开关', 'Prompt optimization on/off'),
+    help: T(`开着时不发送（保持服务端默认）；关掉时发送 optimize_prompt=false，并停用"提示词优化"模式。${CATALOG_SOURCE.zh}`, `When on, nothing is sent (server default); when off, sends optimize_prompt=false and disables the optimization mode. ${CATALOG_SOURCE.en}`),
+    group: 'advanced',
+    experimental: true,
+    modes: modeIdsOf(p).filter((m) => m !== 'layer'),
+    wire: null,
+    fragment: (v) => (v === false ? { optimize_prompt: false } : null),
+    default: true,
+  };
+}
+
 export function buildFields(p: SeedreamProfile): FieldDef[] {
   return [
     sizeField(p),
     ...(p.group ? [sequentialField(), maxImagesField()] : []),
     ...(p.outputFormat ? [outputFormatField()] : []),
     ...(p.transparent ? [backgroundField()] : []),
+    ...(p.catalogParams ? [optimizePromptField(p)] : []),
     promptModeField(p),
+    ...(p.catalogParams ? [negativePromptField(p), catalogSeedField(p)] : []),
     responseFormatField(),
     ...(p.stream ? [streamField()] : []),
     watermarkField(),

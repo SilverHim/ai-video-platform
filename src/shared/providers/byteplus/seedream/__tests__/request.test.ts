@@ -70,16 +70,35 @@ describe('模型注册与能力矩阵', () => {
     expect(pro.type === 'enum' && pro.options.every((o) => o.badge === undefined)).toBe(true);
   });
 
-  it('不声明文档里没有的字段（seed / guidance_scale / n / negative_prompt）', () => {
-    const banned = ['seed', 'guidance_scale', 'n', 'negative_prompt'];
+  it('不声明文档与目录都没有的字段（guidance_scale / n）；目录元数据才有的字段只给 pro / flash，且默认不发送', () => {
+    const banned = ['guidance_scale', 'n'];
+    const catalogOnly = ['negative_prompt', 'seed', 'optimize_prompt'];
     for (const m of SEEDREAM_MODELS) {
-      expect(m.fields.filter((f) => banned.includes(f.key) || (f.wire !== null && banned.includes(f.wire)))).toEqual([]);
+      const declared = (k: string) => m.fields.some((f) => f.key === k || f.wire === k);
+      for (const k of banned) expect(declared(k)).toBe(false);
+      for (const k of catalogOnly) expect(declared(k) || m.fields.some((f) => f.key === k)).toBe(m.id === PRO || m.id === FLASH);
+      for (const f of m.fields.filter((x) => catalogOnly.includes(x.key))) {
+        // seed 已在 flash 实测可复现，转正；其余两项效果未验证，仍标实验
+        expect(Boolean(f.experimental)).toBe(f.key !== 'seed');
+        expect(f.modes).not.toContain('layer');
+      }
       for (const mode of m.modes) {
         const slots: Record<string, AssetRef[]> = mode.slots[0]!.min ? { image: [localImg('a', { hasAlpha: true })] } : {};
         const { body } = run(m.id, { modeId: mode.id, slots });
-        for (const k of banned) expect(body).not.toHaveProperty(k);
+        for (const k of [...banned, ...catalogOnly]) expect(body).not.toHaveProperty(k);
       }
     }
+  });
+
+  it('目录元数据字段：填了才发送；关掉提示词优化时发送 optimize_prompt=false 并停用优化模式', () => {
+    const { body, ev } = run(FLASH, { values: { negative_prompt: 'text, watermark', seed: 42, optimize_prompt: false } });
+    expect(body).toMatchObject({ negative_prompt: 'text, watermark', seed: 42, optimize_prompt: false });
+    expect(body).not.toHaveProperty('optimize_prompt_options');
+    expect(ev.fields.optimize_prompt_mode).toMatchObject({ sent: false, disabledReason: { zh: '已关闭提示词优化' } });
+    expect(run(PRO, { values: { negative_prompt: '', seed: null, optimize_prompt: true } }).body).toEqual(run(PRO).body);
+    // 图层分解模式不开放这三个字段
+    const layer = run(PRO, { modeId: 'layer', slots: { image: [localImg('a')] }, values: { negative_prompt: 'x', seed: 1, optimize_prompt: false } }).body;
+    for (const k of ['negative_prompt', 'seed', 'optimize_prompt']) expect(layer).not.toHaveProperty(k);
   });
 
   it('参考图上限：pro / flash 10，其余 14；来源 local / url / task-output', () => {

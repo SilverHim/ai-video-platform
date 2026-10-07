@@ -42,6 +42,8 @@ export interface SeedreamProfile {
   transparent: boolean;
   /** 提示词支持 <point>/<bbox> 交互式编辑 */
   interactiveEdit: boolean;
+  /** 模型目录元数据（arkcli models get 的 supported_params）列出、API 文档与 OpenAPI 合约没有的参数：negative_prompt / seed / optimize_prompt */
+  catalogParams: boolean;
   docs: DocRef[];
 }
 
@@ -63,6 +65,7 @@ export const PROFILES: SeedreamProfile[] = [
     stream: false,
     layer: true,
     transparent: true,
+    catalogParams: true,
     interactiveEdit: true,
     docs: PRO_DOCS,
   },
@@ -80,6 +83,7 @@ export const PROFILES: SeedreamProfile[] = [
     stream: false,
     layer: true,
     transparent: true,
+    catalogParams: true,
     interactiveEdit: true,
     docs: PRO_DOCS,
   },
@@ -98,6 +102,7 @@ export const PROFILES: SeedreamProfile[] = [
     stream: true,
     layer: false,
     transparent: false,
+    catalogParams: false,
     interactiveEdit: false,
     docs: [...COMMON_DOCS, doc(DOC_URLS.stream)],
   },
@@ -115,6 +120,7 @@ export const PROFILES: SeedreamProfile[] = [
     stream: true,
     layer: false,
     transparent: false,
+    catalogParams: false,
     interactiveEdit: false,
     docs: [...COMMON_DOCS, doc(DOC_URLS.stream)],
   },
@@ -133,6 +139,7 @@ export const PROFILES: SeedreamProfile[] = [
     stream: true,
     layer: false,
     transparent: false,
+    catalogParams: false,
     interactiveEdit: false,
     docs: [...COMMON_DOCS, doc(DOC_URLS.stream)],
   },
