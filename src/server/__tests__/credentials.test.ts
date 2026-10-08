@@ -36,6 +36,23 @@ describe('MiniMax 按量 / 订阅 Key 的选择', () => {
     expect(auths.at(-1)!.auth).toBe(`Bearer ${PAYGO}`);
   });
 
+  it('选了按量但只配了订阅：提示可以改选订阅', async () => {
+    t.keystore.set('minimax-subscription', SUB);
+    const res = await post('/api/tasks', { form: form({ credential: 'paygo' }) });
+    expect(res.status).toBe(400);
+    expect((await json(res)).error.message).toContain('改选订阅');
+  });
+
+  it('剩余额度接口遇到网络错误时带回具体原因，不是 500', async () => {
+    t.cleanup();
+    const failing: FetchLike = async (url, init) => (new URL(url).pathname === '/v1/token_plan/remains' ? Promise.reject(new Error('ECONNREFUSED')) : mockFetch(url, init));
+    t = makeApp({ mock: false, fetchImpl: failing, downloader: new MockDownloader() });
+    t.keystore.set('minimax-subscription', SUB);
+    const res = await t.app.request(`${BASE}/api/keys/minimax-subscription/quota`, { headers: WEB_HEADERS });
+    expect(res.status).toBe(200);
+    expect((await json(res)).error).toMatchObject({ category: 'network' });
+  });
+
   it('指定订阅但没配置时报错，不会悄悄改用按量 Key', async () => {
     t.keystore.set('minimax', PAYGO);
     const res = await post('/api/tasks', { form: form({ credential: 'subscription' }) });

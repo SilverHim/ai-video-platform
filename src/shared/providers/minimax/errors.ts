@@ -42,7 +42,11 @@ const V2_TYPE_CATEGORY: Record<string, ErrorCategory> = {
 };
 
 const HINTS: Partial<Record<ErrorCategory, ReturnType<typeof T>>> = {
-  auth: T('API Key 无效：请确认是国际站（platform.minimax.io）的按量付费 Key（sk-api- 开头）', 'Invalid API key: use a pay-as-you-go key (sk-api-…) from platform.minimax.io'),
+  // 有按量 / 订阅两种 Key，这里不知道这次用的是哪种：提示保持中性
+  auth: T(
+    'Key 无效或类型不符：请确认是国际站（platform.minimax.io）的 Key，并填在对应一栏（按量 Key 以 sk-api- 开头，订阅 Key 以 sk-cp- 开头）',
+    'Invalid key or wrong type: use a key from platform.minimax.io and put it in the matching slot (pay-as-you-go keys start with sk-api-, subscription keys with sk-cp-)',
+  ),
   balance: T('余额不足，请到 MiniMax 控制台充值', 'Insufficient balance; top up in the MiniMax console'),
   content_policy: T('内容触发了安全审核', 'Content was flagged by safety checks'),
   rate_limit: T('请求过于频繁，已触发限流', 'Rate limited; slow down'),

@@ -313,6 +313,8 @@
     "fromQuota": "at list price, deducted from the subscription quota (not the balance)",
     "quota": "Check remaining quota (free)",
     "notSubscriptionKey": "This does not look like a subscription key (they start with sk-cp-)",
-    "isSubscriptionKey": "This is a subscription key (sk-cp-); put it in the subscription key slot"
+    "isSubscriptionKey": "This is a subscription key (sk-cp-); put it in the subscription key slot",
+    "auto": "Auto (subscription if set)",
+    "autoCurrent": "Auto (now: {{kind}})"
   }
 }

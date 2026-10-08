@@ -67,28 +67,37 @@ export class Keystore {
   constructor(
     private readonly file: string,
     private readonly env: NodeJS.ProcessEnv = process.env,
-  ) {}
+  ) {
+    this.migrateLegacy();
+  }
 
   private read(): KeyFile {
     if (!existsSync(this.file)) return { version: 1, providers: {} };
     try {
       const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as KeyFile;
-      if (parsed && parsed.version === 1 && typeof parsed.providers === 'object') return this.migrate(parsed);
+      if (parsed && parsed.version === 1 && typeof parsed.providers === 'object') return parsed;
     } catch {
       // 文件损坏时当作空；写入时会覆盖
     }
     return { version: 1, providers: {} };
   }
 
-  /** 以前只有一个 MiniMax 槽位：填进去的若是订阅 Key（sk-cp-），挪到订阅槽位 */
-  private migrate(data: KeyFile): KeyFile {
-    const mm = data.providers.minimax;
-    if (mm?.apiKey.startsWith(SUBSCRIPTION_PREFIX) && !data.providers['minimax-subscription']) {
-      data.providers['minimax-subscription'] = mm;
-      delete data.providers.minimax;
-      this.write(data);
+  /**
+   * 升级兼容（只在启动时做一次）：以前只有一个 MiniMax 槽位，填进去的若是订阅 Key（sk-cp-），挪到订阅槽位。
+   * 之后按量槽位不再接受 sk-cp-（见 set），所以不会再出现需要迁移的数据
+   */
+  private migrateLegacy(): void {
+    try {
+      const data = this.read();
+      const mm = data.providers.minimax;
+      if (typeof mm?.apiKey === 'string' && mm.apiKey.startsWith(SUBSCRIPTION_PREFIX) && !data.providers['minimax-subscription']) {
+        data.providers['minimax-subscription'] = mm;
+        delete data.providers.minimax;
+        this.write(data);
+      }
+    } catch {
+      // 迁移失败不影响启动：Key 仍在原槽位，用户可在设置页重新填写
     }
-    return data;
   }
 
   private write(data: KeyFile): void {
@@ -135,6 +144,10 @@ export class Keystore {
 
   set(keyId: KeyId, rawKey: unknown, now = Date.now()): KeyStatus {
     const apiKey = normalizeKey(rawKey);
+    // sk-cp- 一定是订阅 Key（官方 CLI 文档）：放进按量槽位会用错额度，直接拒绝
+    if (KEY_SLOTS[keyId].kind === 'paygo' && keyId === 'minimax' && apiKey.startsWith(SUBSCRIPTION_PREFIX)) {
+      throw new KeyValidationError('这是订阅 Key（sk-cp- 开头），请填到「订阅 Key」一栏');
+    }
     const data = this.read();
     data.providers[keyId] = { apiKey, updatedAt: now };
     this.write(data);

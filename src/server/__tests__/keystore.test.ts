@@ -1,4 +1,4 @@
-import { readFileSync, statSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Keystore, maskKey, normalizeKey } from '../keystore.js';
 import { BASE, makeApp, tempDir, WEB_HEADERS, json } from './helpers.js';
@@ -29,15 +29,26 @@ describe('MiniMax 两种 Key', () => {
     expect(ks.resolve('byteplus', 'subscription')).toBeNull();
   });
 
-  it('旧文件里 MiniMax 槽位存的是订阅 Key（sk-cp-）时自动挪到订阅槽位', () => {
+  it('升级：旧文件里 MiniMax 槽位存的是订阅 Key（sk-cp-）时，启动时挪到订阅槽位（只做一次）', () => {
     const tmp = tempDir();
     cleanup = tmp.cleanup;
     const file = `${tmp.dir}/keys.json`;
-    new Keystore(file, {}).set('minimax', SUB);
+    writeFileSync(file, JSON.stringify({ version: 1, providers: { minimax: { apiKey: SUB, updatedAt: 1 } } }));
     const ks = new Keystore(file, {});
     expect(ks.status('minimax').configured).toBe(false);
     expect(ks.get('minimax-subscription')).toBe(SUB);
-    expect(JSON.parse(readFileSync(file, 'utf8')).providers).toEqual({ 'minimax-subscription': { apiKey: SUB, updatedAt: expect.any(Number) } });
+    expect(JSON.parse(readFileSync(file, 'utf8')).providers).toEqual({ 'minimax-subscription': { apiKey: SUB, updatedAt: 1 } });
+  });
+
+  it('按量槽位拒绝 sk-cp-（订阅 Key），清除订阅时不会把别的槽位挪来挪去', () => {
+    const tmp = tempDir();
+    cleanup = tmp.cleanup;
+    const ks = new Keystore(`${tmp.dir}/keys.json`, {});
+    expect(() => ks.set('minimax', SUB)).toThrow('订阅 Key');
+    ks.set('minimax', PAYGO);
+    ks.set('minimax-subscription', SUB);
+    expect(ks.clear('minimax-subscription').configured).toBe(false);
+    expect(ks.get('minimax')).toBe(PAYGO);
   });
 
   it('环境变量 MINIMAX_SUBSCRIPTION_KEY', () => {

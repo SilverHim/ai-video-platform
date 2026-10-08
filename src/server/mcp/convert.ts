@@ -104,6 +104,7 @@ export function summarizeTask(t: TaskRecord, outputsRoot: string) {
     created_at: new Date(t.createdAt).toISOString(),
     ...(t.upstreamTaskId ? { upstream_task_id: t.upstreamTaskId } : {}),
     ...(t.costEstimate ? { estimated_cost_usd: t.costEstimate.amount } : {}),
+    ...(t.form.credential ? { credential: t.form.credential } : {}),
     ...(t.error ? { error: { code: t.error.code, message: t.error.message, ...(t.error.hint ? { hint: t.error.hint.zh } : {}) } } : {}),
     ...(t.failures.length ? { failed_items: t.failures.length } : {}),
     files: t.results.map((r: ResultRecord) => ({

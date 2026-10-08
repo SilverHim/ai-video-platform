@@ -68,15 +68,17 @@ export function StudioPage() {
     }
     setConsentOpen(false);
     const opts = { tempHost, ...(consent ? { consent: true } : {}) };
+    // 「自动」选 Key 时，按界面上显示的那种提交：之后 Key 配置变了也只会报错，不会悄悄换一种扣费
+    const toSend = form.credential || !preview?.credential ? form : { ...form, credential: preview.credential.kind };
     setSubmitting(true);
     setSubmitIssues([]);
     setSubmitError(null);
     setTab('result');
     try {
       if (evaluated.effective.stream === true) {
-        await api.submitStream(form, { onTask: (id) => setSelectedTask(id), onError: (e) => setSubmitError('message' in e ? e.message : String(e)) }, opts);
+        await api.submitStream(toSend, { onTask: (id) => setSelectedTask(id), onError: (e) => setSubmitError('message' in e ? e.message : String(e)) }, opts);
       } else {
-        const done = await api.submit(form, opts);
+        const done = await api.submit(toSend, opts);
         useTasks.getState().upsert(done);
         setSelectedTask(done.id);
       }

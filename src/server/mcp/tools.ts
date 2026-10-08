@@ -194,6 +194,14 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
           issues: p.issues.map((i) => ({ id: i.id, severity: i.severity, message: i.message.zh, ...(i.fix ? { fix: i.fix.patch } : {}) })),
           request: p.request,
           estimated_cost: p.cost ? { usd: p.cost.amount, basis: p.cost.basis.zh } : null,
+          ...(p.credential
+            ? {
+                credential: {
+                  ...p.credential,
+                  note: p.credential.kind === 'subscription' ? '订阅 Key：按量价折算，从订阅额度扣，不扣余额' : '按量 Key：扣账户余额',
+                },
+              }
+            : {}),
           public_upload: p.uploads.required ? { required: true, host: p.uploads.target.id, files: p.uploads.files, note: '提交时需要 allow_public_upload: true' } : { required: false },
         });
       } catch (err) {

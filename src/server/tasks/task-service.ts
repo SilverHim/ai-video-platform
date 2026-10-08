@@ -140,6 +140,9 @@ export class TaskService {
     if (r) return { key: r.key, kind: r.kind };
     if (this.d.mock) return { key: 'mock-key', kind: pref ?? 'paygo' };
     if (pref === 'subscription') throw new TaskInputError('missing_key', { zh: `还没有配置 ${provider.label.zh} 的订阅 Key（设置页填写）`, en: `No subscription key for ${provider.label.en} (set it in Settings)` }, [], 400);
+    if (pref === 'paygo' && keyKindsOf(provider.id).length > 1) {
+      throw new TaskInputError('missing_key', { zh: `还没有配置 ${provider.label.zh} 的按量 Key：可在设置页填写，或把「用哪个 Key」改选订阅 Key`, en: `No pay-as-you-go key for ${provider.label.en}: add one in Settings, or switch "Key" to the subscription key` }, [], 400);
+    }
     throw new TaskInputError('missing_key', { zh: `还没有配置 ${provider.label.zh} 的 API Key（设置页填写）`, en: `No API key for ${provider.label.en} (set it in Settings)` }, [], 400);
   }
 
@@ -437,9 +440,15 @@ export class TaskService {
     if (!isKeyId(keyId) || KEY_SLOTS[keyId].kind !== 'subscription') throw new TaskInputError('not_supported', { zh: '只有订阅 Key 能查剩余额度', en: 'Only subscription keys have a quota' }, [], 400);
     const provider = this.catalog.getProvider(KEY_SLOTS[keyId].provider);
     if (!provider) throw new TaskInputError('unknown_provider', { zh: '未知服务商', en: 'Unknown provider' }, [], 404);
-    const res = await this.d.upstream.call({ provider, endpointId: 'plan.remains', baseUrlId: 'www', apiKey: this.apiKey(provider, 'subscription') });
-    const err = provider.normalizeError(res);
-    return { status: res.status, body: safeJson(res.bodyText) ?? null, ...(err ? { error: err } : {}) };
+    const apiKey = this.apiKey(provider, 'subscription');
+    try {
+      const res = await this.d.upstream.call({ provider, endpointId: 'plan.remains', baseUrlId: 'www', apiKey });
+      const err = provider.normalizeError(res);
+      return { status: res.status, body: safeJson(res.bodyText) ?? null, ...(err ? { error: err } : {}) };
+    } catch (err) {
+      // 网络错误 / 超时 / 本机限速：带上具体原因，不要变成笼统的 500
+      return { status: 0, body: null, error: err instanceof UpstreamError ? err.error : makeError({ providerId: provider.id, category: 'network', code: 'NETWORK', message: String(err) }) };
+    }
   }
 
   /** 免费校验某个 Key 槽位：订阅 Key 查剩余额度，按量 Key 走服务商的 keyTest */

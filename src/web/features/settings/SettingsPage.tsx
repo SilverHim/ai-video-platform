@@ -7,13 +7,14 @@ import { useText } from '../../i18n/useText';
 import { EndpointCard } from './EndpointCard';
 import { McpCard } from './McpCard';
 
-function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeyStatus) => void }) {
+function KeyCard({ status, onChange }: { status: KeyStatus; onChange: () => void }) {
   const { t } = useTranslation();
   const tx = useText();
   const [value, setValue] = useState('');
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [quota, setQuota] = useState<string | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(false);
   const readOnly = status.source === 'env';
   // MiniMax 订阅 Key 以 sk-cp- 开头（官方 CLI 文档）：填错槽位时提示，不拦截
   const multiKind = keyKindsOf(status.provider).length > 1;
@@ -22,8 +23,9 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeySta
   const run = async (fn: () => Promise<{ key: KeyStatus }>, ok: string) => {
     setMessage(null);
     try {
-      const { key } = await fn();
-      onChange(key);
+      await fn();
+      // 一个槽位的变化可能影响别的槽位（例如 MiniMax 两种 Key）：刷新全部卡片
+      onChange();
       setValue('');
       setMessage(ok);
     } catch (err) {
@@ -96,13 +98,22 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeySta
       {status.kind === 'subscription' && status.configured ? (
         <button
           type="button"
-          className="ml-2 mt-2 rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs"
-          onClick={() =>
+          className="ml-2 mt-2 rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs disabled:opacity-50"
+          disabled={quotaLoading}
+          onClick={() => {
+            setQuotaLoading(true);
             void api
               .keyQuota(status.keyId)
-              .then((r) => setQuota(JSON.stringify(r.body, null, 2)))
+              .then((r) =>
+                setQuota(
+                  r.error || r.status >= 400 || r.status === 0
+                    ? t('settings.testFail', { message: r.error ? `${r.error.code} ${r.error.hint ? tx(r.error.hint) : r.error.message}` : `HTTP ${r.status}` })
+                    : JSON.stringify(r.body, null, 2),
+                ),
+              )
               .catch((e: unknown) => setQuota(t('error.generic', { message: e instanceof Error ? e.message : String(e) })))
-          }
+              .finally(() => setQuotaLoading(false));
+          }}
         >
           {t('credential.quota')}
         </button>
@@ -132,7 +143,7 @@ export function SettingsPage() {
         <h3 className="font-medium">{t('settings.keys')}</h3>
         <p className="text-sm text-[var(--color-muted)]">{t('settings.keysHint', { dataDir: health?.dataDir ?? '…' })}</p>
         {keys.map((k) => (
-          <KeyCard key={k.keyId} status={k} onChange={(s) => setKeys((prev) => prev.map((p) => (p.keyId === s.keyId ? s : p)))} />
+          <KeyCard key={k.keyId} status={k} onChange={load} />
         ))}
       </section>
       <section className="space-y-3">
