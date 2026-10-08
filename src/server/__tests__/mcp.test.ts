@@ -79,7 +79,7 @@ describe('MCP 工具（v2 客户端，2026-07-28 协议）', () => {
     running = await serve();
     const client = await v2Client(running);
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(tools).toEqual(['cancel_task', 'create_video_task', 'generate_image', 'get_model_schema', 'get_task', 'list_models', 'list_presets', 'list_tasks', 'preview_request']);
+    expect(tools).toEqual(['cancel_task', 'create_video_task', 'generate_image', 'get_model_schema', 'get_task', 'list_endpoints', 'list_models', 'list_presets', 'list_tasks', 'preview_request']);
     const models = text(await client.callTool({ name: 'list_models', arguments: {} }));
     expect(models.map((m: { model_id: string }) => m.model_id)).toEqual(['fake/img', 'fake/video']);
     const schema = text(await client.callTool({ name: 'get_model_schema', arguments: { model_id: 'fake/video' } }));

@@ -8,6 +8,10 @@ import type { AppDeps } from '../app.js';
 import type { Catalog } from '../tasks/task-service.js';
 import { TaskInputError } from '../tasks/task-service.js';
 import { describeField, McpInputError, summarizeTask, toForm, type McpGenerateInput } from './convert.js';
+import { ControlPlaneError } from '../controlplane/ark-control.js';
+import { ControlNotConfiguredError } from '../controlplane/directory.js';
+import type { EndpointInfo } from '../../shared/api-contract.js';
+import type { ModelDef } from '../../shared/catalog/types.js';
 import { makeThumbnail } from '../media/thumbnail.js';
 
 type ToolResult = { content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[]; isError?: boolean };
@@ -29,7 +33,10 @@ const generateShape = {
   prompt: z.string().optional().describe('提示词。引用素材时按 get_model_schema 给出的写法（如 "Image 1"、"@Video 1"）'),
   params: z.record(z.string(), z.unknown()).optional().describe('参数，键为 get_model_schema 返回的字段 key（不是 wire 名）'),
   assets: assetSpec,
-  model_override: z.string().optional().describe('BytePlus：用推理接入点 ID（ep-…）覆盖 model'),
+  model_override: z
+    .string()
+    .optional()
+    .describe('BytePlus：通过推理接入点（ep-…）调用，例如关闭了内容过滤的那个；用 list_endpoints 查可用的。配置了 AK/SK 时会校验它绑定的是不是同一个模型'),
   credential: z
     .enum(['subscription', 'paygo'])
     .optional()
@@ -48,6 +55,30 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
     if (!found) throw new McpInputError(`未知模型 ${modelId}；用 list_models 查看可用模型`);
     return found;
   };
+
+  /**
+   * 校验 model_override（ep-…）：配了 AK/SK 时确认账号下有这个 Endpoint、绑定的是同一个模型、没有停止。
+   * 没配 AK/SK 或控制面暂时不可用时不拦（只是少了这层保护）
+   */
+  const checkEndpoint = async (model: ModelDef, override: string | undefined): Promise<EndpointInfo | null> => {
+    if (!override) return null;
+    if (!model.allowModelOverride) throw new McpInputError(`${model.id} 不支持 model_override`);
+    if (!override.startsWith('ep-')) return null;
+    let all: EndpointInfo[];
+    try {
+      all = await deps.services.endpoints.list();
+    } catch {
+      return null;
+    }
+    const ep = all.find((e) => e.id === override);
+    if (!ep) throw new McpInputError(`账号下没有 Endpoint ${override}；用 list_endpoints 查看可用的`);
+    if (ep.modelId && ep.modelId !== model.id) {
+      throw new McpInputError(`Endpoint ${override}（${ep.name}）绑定的是 ${ep.modelId}，不是 ${model.id}：请把 model_id 改成 ${ep.modelId}，或换一个 Endpoint`);
+    }
+    if (/^stopped$/i.test(ep.status)) throw new McpInputError(`Endpoint ${override}（${ep.name}）已停止，先在平台设置页启动它`);
+    return ep;
+  };
+  const endpointSummary = (e: EndpointInfo) => ({ endpoint_id: e.id, name: e.name, status: e.status, content_filter: e.contentFilter });
 
   /** 套用预设：预设的模式 / 参数 / 提示词作为默认，调用方传的值覆盖 */
   const applyPreset = <T extends { preset_id?: string | undefined; model_id: string; mode?: string | undefined; params?: Record<string, unknown> | undefined; prompt?: string | undefined }>(input: T): T => {
@@ -109,6 +140,38 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
       });
     }
   };
+
+  server.registerTool(
+    'list_endpoints',
+    {
+      title: '列出推理接入点',
+      description:
+        'BytePlus：列出账号下的推理接入点（Endpoint），可按 model_id 只看绑定该模型的。生成时把 endpoint_id 填进 model_override，就会通过它调用（例如关闭了内容过滤的 Endpoint）。需要先在平台设置页配置 AK/SK。',
+      inputSchema: z.object({
+        model_id: z.string().optional().describe('只列出绑定这个模型的 Endpoint，例如 byteplus/seedream-5-0-flash'),
+        refresh: z.boolean().optional().describe('跳过 15 秒缓存，重新向控制面查询'),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ model_id, refresh }) => {
+      try {
+        const all = await deps.services.endpoints.list(refresh ? { refresh: true } : {});
+        const items = model_id ? all.filter((e) => e.modelId === model_id) : all;
+        return ok(
+          items.map((e) => ({
+            ...endpointSummary(e),
+            model_id: e.modelId,
+            foundation_model: e.foundationModel ? `${e.foundationModel.name}-${e.foundationModel.version}` : null,
+            ...(e.rateLimit && e.rateLimit.rpm > 0 ? { rate_limit: e.rateLimit } : {}),
+          })),
+        );
+      } catch (err) {
+        if (err instanceof ControlNotConfiguredError) return fail(`${err.message}（只影响 Endpoint 列表；不用 Endpoint 时可以直接生成）`);
+        if (err instanceof ControlPlaneError) return fail(`控制面返回错误：${err.code} ${err.message}`);
+        return toolError(err);
+      }
+    },
+  );
 
   server.registerTool(
     'list_models',
@@ -187,9 +250,11 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
       try {
         const input = applyPreset(raw);
         const { provider, model } = resolveModel(input.model_id);
+        const ep = await checkEndpoint(model, input.model_override);
         const form = await toForm(input as McpGenerateInput, provider, model, conv);
         const p = svc.preview(form, input.temp_host ? { tempHost: input.temp_host } : {});
         return ok({
+          ...(ep ? { endpoint: endpointSummary(ep) } : {}),
           can_submit: p.canSubmit,
           issues: p.issues.map((i) => ({ id: i.id, severity: i.severity, message: i.message.zh, ...(i.fix ? { fix: i.fix.patch } : {}) })),
           request: p.request,
@@ -227,6 +292,7 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
         const input = applyPreset(raw);
         const { provider, model } = resolveModel(input.model_id);
         if (model.output !== 'image') return fail(`${model.id} 是视频模型，请用 create_video_task`);
+        await checkEndpoint(model, input.model_override);
         const form = await toForm(input as McpGenerateInput, provider, model, conv);
         if (model.fields.some((f) => f.key === 'stream')) form.values.stream = false;
         const task = await svc.submit(form, 'mcp', { ...(input.allow_public_upload ? { publicUploadConsent: true } : {}), ...(input.temp_host ? { tempHost: input.temp_host } : {}) });
@@ -251,6 +317,7 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
         const input = applyPreset(raw);
         const { provider, model } = resolveModel(input.model_id);
         if (model.output !== 'video') return fail(`${model.id} 是图像模型，请用 generate_image`);
+        await checkEndpoint(model, input.model_override);
         const form = await toForm(input as McpGenerateInput, provider, model, conv);
         let task = await svc.submit(form, 'mcp', { ...(input.allow_public_upload ? { publicUploadConsent: true } : {}), ...(input.temp_host ? { tempHost: input.temp_host } : {}) });
         if (input.wait_seconds && !isTerminal(task.status)) task = (await waitFor(task.id, input.wait_seconds, ctx as never)) ?? task;

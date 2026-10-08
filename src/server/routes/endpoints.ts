@@ -1,10 +1,9 @@
-import { createHash } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import type { EndpointCreateInput, EndpointCreatePlan, EndpointInfo, EndpointUpdateInput } from '../../shared/api-contract.js';
 import { T } from '../../shared/catalog/helpers.js';
-import type { ModelDef } from '../../shared/catalog/types.js';
 import type { I18nText } from '../../shared/i18n.js';
-import { getModel, listModels } from '../../shared/providers/registry.js';
+import { getModel } from '../../shared/providers/registry.js';
+import { byteplusModels } from '../controlplane/directory.js';
 import type { AppDeps } from '../app.js';
 import {
   checkEndpointId,
@@ -28,26 +27,13 @@ export const CONFIRM_DELETE_HEADER = 'x-confirm-delete';
 export const STOP_WAIT_MS = 120_000;
 export const STOP_POLL_MS = 3_000;
 
-const LIST_PAGE_SIZE = 100;
-const LIST_MAX_PAGES = 10;
-const CACHE_MS = 15_000;
-/** 列表接口文档里没有 Moderation；缺失时逐个 GetEndpoint 补齐，最多这么多个 */
-const DETAIL_FILL_LIMIT = 30;
 
-type Json = Record<string, unknown>;
 
 export function endpointRoutes(deps: AppDeps) {
   const app = new Hono();
   const control = deps.services.control;
-  const byteplusModels = (): ModelDef[] => listModels({ includeHidden: true }).filter((x) => x.provider.id === 'byteplus').map((x) => x.model);
-  // 缓存按凭据指纹区分；generation 在凭据变化 / 写操作时递增，进行中的旧请求返回后不再写缓存
-  let cache: { at: number; key: string; items: EndpointInfo[] } | null = null;
-  let generation = 0;
-  const invalidate = () => {
-    cache = null;
-    generation++;
-  };
-  const credKey = (cr: ControlCredentials) => createHash('sha256').update(`${cr.accessKeyId}\0${cr.secretAccessKey}`).digest('hex').slice(0, 16);
+  const directory = deps.services.endpoints;
+  const invalidate = () => directory.invalidate();
 
   const creds = (c: Context): ControlCredentials | Response => {
     const cr = deps.keystore.getControl();
@@ -61,33 +47,6 @@ export function endpointRoutes(deps: AppDeps) {
     }
     throw err;
   };
-
-  async function listAll(cr: ControlCredentials): Promise<EndpointInfo[]> {
-    const models = byteplusModels();
-    const raws: Json[] = [];
-    for (let page = 1; page <= LIST_MAX_PAGES; page++) {
-      const res = await control.call(cr, 'ListEndpoints', { PageNumber: page, PageSize: LIST_PAGE_SIZE, SortBy: 'CreateTime', SortOrder: 'Desc' });
-      const items = Array.isArray(res.Items) ? (res.Items as Json[]) : [];
-      raws.push(...items);
-      const total = typeof res.TotalCount === 'number' ? res.TotalCount : raws.length;
-      if (items.length < LIST_PAGE_SIZE || raws.length >= total) break;
-    }
-    const infos = raws.map((r) => toEndpointInfo(r, models));
-    // 列表没带 Moderation 时用详情补齐（实测 GetEndpoint 会返回）
-    const missing = infos.filter((e) => e.contentFilter === 'unknown').slice(0, DETAIL_FILL_LIMIT);
-    await Promise.all(
-      missing.map(async (e) => {
-        try {
-          const d = await control.call(cr, 'GetEndpoint', { Id: e.id });
-          const full = toEndpointInfo(endpointOf(d), models);
-          Object.assign(e, { contentFilter: full.contentFilter, moderationStrategy: full.moderationStrategy });
-        } catch {
-          // 补不到就保持 unknown
-        }
-      }),
-    );
-    return infos;
-  }
 
   /* ---------- 凭据 ---------- */
 
@@ -127,15 +86,7 @@ export function endpointRoutes(deps: AppDeps) {
     if (cr instanceof Response) return cr;
     const modelId = c.req.query('modelId');
     try {
-      const key = credKey(cr);
-      let all: EndpointInfo[];
-      if (cache && cache.key === key && c.req.query('refresh') !== '1' && Date.now() - cache.at <= CACHE_MS) all = cache.items;
-      else {
-        const gen = generation;
-        const at = Date.now();
-        all = await listAll(cr);
-        if (gen === generation) cache = { at, key, items: all };
-      }
+      const all = await directory.list({ refresh: c.req.query('refresh') === '1' });
       const items = modelId ? all.filter((e) => e.modelId === modelId) : all;
       return c.json({ items });
     } catch (err) {

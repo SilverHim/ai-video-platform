@@ -3,6 +3,7 @@ import type { AssetStore } from './assets/asset-store.js';
 import type { CaptureService } from './capture/capture.js';
 import type { ResolvedConfig } from './config.js';
 import type { ArkControlClient } from './controlplane/ark-control.js';
+import type { EndpointDirectory } from './controlplane/directory.js';
 import type { EventBus } from './events.js';
 import type { Keystore } from './keystore.js';
 import { accessLog } from './middleware/logger.js';
@@ -32,6 +33,8 @@ export interface Services {
   scheduler: Scheduler;
   /** ModelArk 控制面（推理接入点管理，AK/SK） */
   control: ArkControlClient;
+  /** 推理接入点列表（带缓存，网页与 MCP 共用） */
+  endpoints: EndpointDirectory;
 }
 
 export interface AppDeps {
