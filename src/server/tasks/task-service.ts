@@ -2,6 +2,7 @@ import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { isKeyId, KEY_SLOTS, keyKindsOf } from '../../shared/api-contract.js';
+import { parsePlanRemains, type PlanQuotaItem } from '../../shared/providers/minimax/quota.js';
 import type { CredentialKind, EvaluatedForm, FormInput, Issue, ModelDef, ProviderDef, ResolvedAssets, UpstreamResponse } from '../../shared/catalog/types.js';
 import { evaluate, CatalogLookupError } from '../../shared/engine/evaluate.js';
 import type { I18nText } from '../../shared/i18n.js';
@@ -435,8 +436,8 @@ export class TaskService {
   }
 
   /** 免费校验 Key（BytePlus / MiniMax 的任务列表接口） */
-  /** 订阅 Key 的剩余额度（免费只读）。返回格式文档未写：先原样返回，按实测再解析 */
-  async quota(keyId: string): Promise<{ status: number; body: unknown; error?: NormalizedError }> {
+  /** 订阅 Key 的剩余额度（免费只读）。返回格式文档未写，按实测结构解析；不认识时 quota 为 null，界面展示原样 body */
+  async quota(keyId: string): Promise<{ status: number; body: unknown; quota: PlanQuotaItem[] | null; error?: NormalizedError }> {
     if (!isKeyId(keyId) || KEY_SLOTS[keyId].kind !== 'subscription') throw new TaskInputError('not_supported', { zh: '只有订阅 Key 能查剩余额度', en: 'Only subscription keys have a quota' }, [], 400);
     const provider = this.catalog.getProvider(KEY_SLOTS[keyId].provider);
     if (!provider) throw new TaskInputError('unknown_provider', { zh: '未知服务商', en: 'Unknown provider' }, [], 404);
@@ -444,10 +445,11 @@ export class TaskService {
     try {
       const res = await this.d.upstream.call({ provider, endpointId: 'plan.remains', baseUrlId: 'www', apiKey });
       const err = provider.normalizeError(res);
-      return { status: res.status, body: safeJson(res.bodyText) ?? null, ...(err ? { error: err } : {}) };
+      const body = safeJson(res.bodyText) ?? null;
+      return { status: res.status, body, quota: err ? null : parsePlanRemains(body), ...(err ? { error: err } : {}) };
     } catch (err) {
       // 网络错误 / 超时 / 本机限速：带上具体原因，不要变成笼统的 500
-      return { status: 0, body: null, error: err instanceof UpstreamError ? err.error : makeError({ providerId: provider.id, category: 'network', code: 'NETWORK', message: String(err) }) };
+      return { status: 0, body: null, quota: null, error: err instanceof UpstreamError ? err.error : makeError({ providerId: provider.id, category: 'network', code: 'NETWORK', message: String(err) }) };
     }
   }
 

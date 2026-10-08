@@ -316,5 +316,20 @@
     "isSubscriptionKey": "这是订阅 Key（sk-cp- 开头），请填到「订阅 Key」一栏",
     "auto": "自动（有订阅用订阅）",
     "autoCurrent": "自动（当前：{{kind}}）"
+  },
+  "quota": {
+    "interval": "5 小时窗口",
+    "weekly": "本周",
+    "remaining": "剩 {{pct}}%",
+    "unknown": "剩余未知",
+    "resetsIn": "约 {{time}}后重置",
+    "daysHours": "{{d}} 天 {{h}} 小时",
+    "hoursMinutes": "{{h}} 小时 {{m}} 分",
+    "minutes": "{{m}} 分钟",
+    "model": {
+      "general": "通用额度（general）",
+      "unknown": "未命名额度"
+    },
+    "note": "接口返回格式官方未写，字段含义按实测推断；以 MiniMax 控制台的用量条为准。文本 / 图像 / 音频受 5 小时与周两个窗口限制，视频只受周窗口限制。"
   }
 }

@@ -12,6 +12,7 @@ import {
 } from '../../shared/api-contract';
 import type { CredentialKind, FormInput, Issue, MediaMeta } from '../../shared/catalog/types';
 import type { I18nText } from '../../shared/i18n';
+import type { PlanQuotaItem } from '../../shared/providers/minimax/quota';
 import { SseParser } from '../../shared/sse/parse';
 import type { NormalizedError } from '../../shared/task/errors';
 import type { ExchangeRecord, PresetRecord, ServerEvent, TaskRecord, TemplateRecord } from '../../shared/task/records';
@@ -121,7 +122,7 @@ export const api = {
   setKey: (keyId: KeyId, apiKey: string) => request<{ key: KeyStatus }>(`/api/keys/${keyId}`, { method: 'PUT', body: JSON.stringify({ apiKey }) }),
   clearKey: (keyId: KeyId) => request<{ key: KeyStatus }>(`/api/keys/${keyId}`, { method: 'DELETE' }),
   /** 订阅 Key 的剩余额度（返回格式文档未写，先原样返回） */
-  keyQuota: (keyId: KeyId) => request<{ status: number; body: unknown; error?: NormalizedError }>(`/api/keys/${keyId}/quota`),
+  keyQuota: (keyId: KeyId) => request<{ status: number; body: unknown; quota: PlanQuotaItem[] | null; error?: NormalizedError }>(`/api/keys/${keyId}/quota`),
 
   /* BytePlus 控制面：AK/SK 与推理接入点（Endpoint）管理 */
   controlCredentials: () => request<{ credentials: ControlCredentialStatus }>('/api/control/credentials').then((r) => r.credentials),

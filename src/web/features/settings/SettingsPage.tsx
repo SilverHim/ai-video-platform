@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useOutletContext } from 'react-router';
 import { keyKindsOf, type HealthInfo, type KeyStatus } from '../../../shared/api-contract';
+import type { PlanQuotaItem } from '../../../shared/providers/minimax/quota';
 import { api, ApiRequestError } from '../../lib/api-client';
 import { useText } from '../../i18n/useText';
 import { EndpointCard } from './EndpointCard';
 import { McpCard } from './McpCard';
+import { QuotaView } from './QuotaView';
 
 function KeyCard({ status, onChange }: { status: KeyStatus; onChange: () => void }) {
   const { t } = useTranslation();
@@ -14,6 +16,7 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: () => void
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [quota, setQuota] = useState<string | null>(null);
+  const [quotaItems, setQuotaItems] = useState<PlanQuotaItem[] | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
   const readOnly = status.source === 'env';
   // MiniMax 订阅 Key 以 sk-cp- 开头（官方 CLI 文档）：填错槽位时提示，不拦截
@@ -104,14 +107,22 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: () => void
             setQuotaLoading(true);
             void api
               .keyQuota(status.keyId)
-              .then((r) =>
+              .then((r) => {
+                const failed = Boolean(r.error) || r.status >= 400 || r.status === 0;
+                // 认识的结构用可读视图；不认识就原样展示，方便排查
+                setQuotaItems(failed ? null : r.quota);
                 setQuota(
-                  r.error || r.status >= 400 || r.status === 0
+                  failed
                     ? t('settings.testFail', { message: r.error ? `${r.error.code} ${r.error.hint ? tx(r.error.hint) : r.error.message}` : `HTTP ${r.status}` })
-                    : JSON.stringify(r.body, null, 2),
-                ),
-              )
-              .catch((e: unknown) => setQuota(t('error.generic', { message: e instanceof Error ? e.message : String(e) })))
+                    : r.quota
+                      ? null
+                      : JSON.stringify(r.body, null, 2),
+                );
+              })
+              .catch((e: unknown) => {
+                setQuotaItems(null);
+                setQuota(t('error.generic', { message: e instanceof Error ? e.message : String(e) }));
+              })
               .finally(() => setQuotaLoading(false));
           }}
         >
@@ -119,6 +130,7 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: () => void
         </button>
       ) : null}
       {message ? <p className="mt-2 text-sm text-[var(--color-muted)]">{message}</p> : null}
+      {quotaItems ? <QuotaView items={quotaItems} /> : null}
       {quota ? <pre className="mt-2 max-h-60 overflow-auto rounded bg-[var(--color-bg)] p-2 text-xs">{quota}</pre> : null}
     </div>
   );

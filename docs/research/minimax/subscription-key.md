@@ -15,6 +15,24 @@
 | 额度窗口：文本、图像、音频受 5 小时窗口 + 周窗口；视频只受周窗口 | [Usage](https://platform.minimax.io/docs/m-plan/usage-rules.md) |
 | 查剩余额度：`GET https://www.minimax.io/v1/token_plan/remains`（注意域名是 `www.minimax.io`） | [M Plan FAQ](https://platform.minimax.io/docs/m-plan/faq.md)、[Token Plan FAQ](https://platform.minimax.io/docs/token-plan/faq.md) |
 
+## 实测（2026-10-08，用户的 M Plan 订阅 Key 与按量 Key）
+
+- 两个 Key 的免费测试都通过：按量 Key 调 V2 视频任务列表返回 200；订阅 Key 调剩余额度接口返回 200。
+- 剩余额度接口 `GET https://www.minimax.io/v1/token_plan/remains` 的真实返回（文档未写）：
+
+  ```json
+  { "model_remains": [ { "model_name": "general",
+      "start_time": 1791447773879, "end_time": 1791465773879, "remains_time": 17999990,
+      "current_interval_remaining_percent": 100, "current_interval_status": 1,
+      "current_interval_total_count": 0, "current_interval_usage_count": 0,
+      "weekly_start_time": 1791369726171, "weekly_end_time": 1791974526171, "weekly_remains_time": 526752282,
+      "current_weekly_remaining_percent": 1, "current_weekly_status": 1,
+      "current_weekly_total_count": 0, "current_weekly_usage_count": 0 } ],
+    "base_resp": { "status_code": 0, "status_msg": "success" } }
+  ```
+
+  按字段名推断：`start_time` / `end_time` 是 5 小时窗口起止（毫秒），`remains_time` 是距窗口结束的毫秒数，`*_remaining_percent` 是剩余百分比；`weekly_*` 是周窗口。`*_count` 都是 0，含义不明。这次只返回了一项 `general`，有视频额度的档位是否另有一项未知。平台按这个结构显示，并注明「字段含义按实测推断，以控制台用量条为准」。
+
 ## 未明确（需实测）
 
 - 文档只笼统说「按量计价的 API 接口」可用订阅 Key 扣额度，没有逐个点名 `/v2/video_generation`、`/v1/image_generation`。用订阅 Key 调 H3 是否成功，以真实调用为准。

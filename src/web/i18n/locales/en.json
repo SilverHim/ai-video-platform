@@ -316,5 +316,20 @@
     "isSubscriptionKey": "This is a subscription key (sk-cp-); put it in the subscription key slot",
     "auto": "Auto (subscription if set)",
     "autoCurrent": "Auto (now: {{kind}})"
+  },
+  "quota": {
+    "interval": "5-hour window",
+    "weekly": "This week",
+    "remaining": "{{pct}}% left",
+    "unknown": "remaining unknown",
+    "resetsIn": "resets in about {{time}}",
+    "daysHours": "{{d}} d {{h}} h",
+    "hoursMinutes": "{{h}} h {{m}} min",
+    "minutes": "{{m}} min",
+    "model": {
+      "general": "General quota (general)",
+      "unknown": "Unnamed quota"
+    },
+    "note": "The response format is undocumented; field meanings are inferred from a real response. The MiniMax console usage bar is authoritative. Text / image / audio are limited by both the 5-hour and weekly windows; video only by the weekly window."
   }
 }

@@ -231,8 +231,32 @@ export const mockFetch: FetchLike = async (url, init) => {
   const body = typeof init.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {};
   if (!isMiniMax && init.method === 'POST' && u.pathname.endsWith('/images/generations')) return byteplusImages(body);
   if (isMiniMax && init.method === 'POST' && u.pathname === '/v1/image_generation') return minimaxImages(body);
-  // 订阅额度：真实返回格式文档未写，这里只给最小的成功结构
-  if (isMiniMax && init.method === 'GET' && u.pathname === '/v1/token_plan/remains') return json(200, { base_resp: { status_code: 0, status_msg: 'success' } });
+  // 订阅额度：返回格式文档未写，这里按 2026-10-08 实测的结构
+  if (isMiniMax && init.method === 'GET' && u.pathname === '/v1/token_plan/remains') {
+    const now = Date.now();
+    return json(200, {
+      model_remains: [
+        {
+          model_name: 'general',
+          start_time: now - 3_600_000,
+          end_time: now + 4 * 3_600_000,
+          remains_time: 4 * 3_600_000,
+          current_interval_total_count: 0,
+          current_interval_usage_count: 0,
+          current_interval_status: 1,
+          current_interval_remaining_percent: 80,
+          weekly_start_time: now - 2 * 86_400_000,
+          weekly_end_time: now + 5 * 86_400_000,
+          weekly_remains_time: 5 * 86_400_000,
+          current_weekly_total_count: 0,
+          current_weekly_usage_count: 0,
+          current_weekly_status: 1,
+          current_weekly_remaining_percent: 60,
+        },
+      ],
+      base_resp: { status_code: 0, status_msg: 'success' },
+    });
+  }
   if (isMiniMax && init.method === 'GET' && u.pathname === '/v2/query/video_generation') {
     const items = [...mockTasks.values()].filter((t) => t.provider === 'minimax' && !t.deleted).map((t) => minimaxTaskView(t).task);
     return json(200, { items, total: items.length });
