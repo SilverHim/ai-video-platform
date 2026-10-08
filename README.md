@@ -22,12 +22,15 @@
 - **异步任务**：服务端轮询，关掉网页任务照样跑完；完成后**自动下载到本地**（每个结果只下载一次）
 - **历史**：网页与 MCP 共享，收藏、复用参数、查看原始请求与响应、从 outputs 目录重建
 - **预设与模板**：保存常用参数组合与提示词片段
-- **MCP**：本机 HTTP + 访问令牌，9 个工具，见 [`docs/mcp.md`](docs/mcp.md)
+- **MCP**：本机 HTTP + 访问令牌，10 个工具，见 [`docs/mcp.md`](docs/mcp.md)
+- **桌面版**：macOS（dmg）/ Windows（安装包），双击即用，见 [`docs/desktop.md`](docs/desktop.md)
 - 中英文界面切换
 
 ## 运行
 
-需要 Node.js ≥ 24.15（推荐 26）。
+不想装 Node.js 的话，可以直接下载桌面版（GitHub Releases），第一次打开的放行步骤见 [`docs/desktop.md`](docs/desktop.md)。
+
+从源码运行需要 Node.js ≥ 24.15（推荐 26）。
 
 ```bash
 npm install
@@ -74,15 +77,16 @@ npm test
 npm run lint
 ```
 
-CI 在 macOS 与 Windows、Node 24 / 26 上运行类型检查、lint、测试与构建。
+CI 在 macOS 与 Windows、Node 24 / 26 上运行类型检查、lint、测试与构建；推 `v*` 标签时另有 Release 流程构建桌面安装包。
 
 ## 文档
 
 - [实施方案](docs/plan.md)
 - [调研报告](docs/research/)（基于官方文档的逐项核实，含 CORS 实测）
 - [MCP 接入](docs/mcp.md)
+- [桌面版](docs/desktop.md)
 - [新增服务商 / 模型](docs/adding-a-provider.md)
 
 ## 技术栈
 
-React 19 + Vite + TypeScript 6.0 + Tailwind v4；本机服务 Hono（Node.js）；SQLite（`node:sqlite`）；MCP TypeScript SDK v2。
+React 19 + Vite + TypeScript 6.0 + Tailwind v4；本机服务 Hono（Node.js）；SQLite（`node:sqlite`）；MCP TypeScript SDK v2；桌面版 Electron 44 + electron-builder 26。

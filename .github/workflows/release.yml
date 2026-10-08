@@ -1,0 +1,86 @@
+name: Release
+
+# 推 v* 标签：构建 mac（Apple 芯片，arm64）dmg 与 Windows x64 安装包，上传到草稿 Release（只有仓库成员可见，人工检查后再发布）。
+# 手动运行（workflow_dispatch，选哪个分支或标签都一样）：只构建，安装包作为 Actions 构建产物保留，不建 Release。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    name: 草稿 Release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: 标签必须等于 v + package.json 的版本
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "$GITHUB_REF_NAME" ]; then echo "标签 $GITHUB_REF_NAME 与 package.json 版本 $expected 不一致"; exit 1; fi
+      - name: 创建草稿（重跑时已有同标签的 Release 就沿用）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "已有 $GITHUB_REF_NAME 的 Release，沿用"
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "AI视频生成平台 $GITHUB_REF_NAME" --notes-file .github/release-notes.md
+          fi
+
+  build:
+    name: ${{ matrix.name }}
+    needs: draft
+    # 手动运行时 draft 被跳过，build 照常执行
+    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS（arm64）
+            os: macos-26
+            target: --mac
+            app: release/mac-arm64/AI视频生成平台.app/Contents/MacOS/AI视频生成平台
+            files: release/*.dmg
+          - name: Windows（x64）
+            os: windows-2025
+            target: --win
+            app: release/win-unpacked/ai-video-platform.exe
+            files: release/*.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run desktop:prepare
+      - name: 冒烟测试（Electron 运行时：起服务、读写数据库、取页面）
+        timeout-minutes: 5
+        run: npx electron dist/desktop --smoke-test
+      - name: 打包
+        run: npx electron-builder --config electron-builder.config.mjs ${{ matrix.target }} --publish never
+      - name: 冒烟测试（打包后的应用）
+        timeout-minutes: 5
+        run: '"${{ matrix.app }}" --smoke-test'
+      - name: 上传到草稿 Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" ${{ matrix.files }} --clobber
+      - name: 保留构建产物（手动运行时）
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.os }}-installers
+          path: ${{ matrix.files }}
+          retention-days: 7

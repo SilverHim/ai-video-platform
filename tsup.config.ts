@@ -11,4 +11,6 @@ export default defineConfig({
   splitting: false,
   // 依赖保持外部引用（运行时从 node_modules 加载）；src/shared 会被一起打进来
   skipNodeModulesBundle: true,
+  // 保留 node: 前缀：node:sqlite 只能带前缀引用（tsup 默认会去掉）
+  removeNodeProtocol: false,
 });

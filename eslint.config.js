@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 const nodeBuiltins = ['node:*', 'fs', 'path', 'os', 'crypto', 'http', 'https', 'stream', 'child_process', 'url', 'util'];
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'data/**', 'outputs/**', 'coverage/**', 'docs/**'] },
+  { ignores: ['dist/**', 'release/**', 'node_modules/**', 'data/**', 'outputs/**', 'coverage/**', 'docs/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -51,8 +51,16 @@ export default tseslint.config(
       }],
     },
   },
+  // desktop：Electron 主进程与服务进程入口，不能引用 web 代码
   {
-    files: ['scripts/**/*.{js,mjs,ts}', '*.config.{js,ts}', 'tests/**/*.ts', 'src/**/*.test.ts', 'src/**/__tests__/**/*.ts'],
+    files: ['src/desktop/**/*.ts'],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [{ group: ['**/web/**'], message: 'desktop 不能引用 web 代码' }] }],
+    },
+  },
+  {
+    files: ['scripts/**/*.{js,mjs,ts}', '*.config.{js,mjs,ts}', 'tests/**/*.ts', 'src/**/*.test.ts', 'src/**/__tests__/**/*.ts'],
     languageOptions: { globals: globals.node },
     rules: { 'no-restricted-imports': 'off' },
   },
