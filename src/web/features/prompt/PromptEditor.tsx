@@ -77,6 +77,8 @@ export const PromptEditor = forwardRef<PromptEditorHandle, { value: string; onCh
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const refComp = useRef(new Compartment());
+  // 占位文字单独放一个 Compartment：切换界面语言时能重新配置
+  const placeholderComp = useRef(new Compartment());
   const refsRef = useRef(refs);
   const onChangeRef = useRef(onChange);
 
@@ -104,7 +106,7 @@ export const PromptEditor = forwardRef<PromptEditorHandle, { value: string; onCh
           keymap.of([...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           theme,
-          cmPlaceholder(placeholder ?? ''),
+          placeholderComp.current.of(cmPlaceholder(placeholder ?? '')),
           autocompletion({ override: [complete], activateOnTyping: true }),
           refComp.current.of(refPlugin(new Map(refs.map((r) => [r.id, r.label])))),
           EditorView.updateListener.of((u) => u.docChanged && onChangeRef.current(u.state.doc.toString())),
@@ -121,6 +123,11 @@ export const PromptEditor = forwardRef<PromptEditorHandle, { value: string; onCh
     const v = view.current;
     if (v && v.state.doc.toString() !== value) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value } });
   }, [value]);
+
+  // 切换界面语言时更新占位文字
+  useEffect(() => {
+    view.current?.dispatch({ effects: placeholderComp.current.reconfigure(cmPlaceholder(placeholder ?? '')) });
+  }, [placeholder]);
 
   // 素材编号变化时重绘芯片
   const labelsKey = refs.map((r) => `${r.id}:${r.label}`).join('|');
