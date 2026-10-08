@@ -15,6 +15,14 @@ export function isPrivateAddress(ip: string): boolean {
 
 export class UnsafeUrlError extends Error {}
 
+/**
+ * 结果链接是 http 时改用 https 下载（实测 MiniMax image-01 返回阿里云 OSS 的 http 签名链接，
+ * OSS 同时支持 https，且这类签名不含协议）。https 下载不了就按失败处理，不退回 http
+ */
+export function upgradeToHttps(raw: string): string {
+  return /^http:\/\//i.test(raw) ? `https://${raw.slice(7)}` : raw;
+}
+
 /** 下载前检查：只允许 https，且主机不能解析到内网地址（防御性措施） */
 export async function assertSafeRemoteUrl(raw: string): Promise<URL> {
   let url: URL;

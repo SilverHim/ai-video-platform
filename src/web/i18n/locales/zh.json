@@ -118,7 +118,8 @@
     "editVideo": "编辑此视频（Seedance 2.5）",
     "extendVideo": "延长此视频（Seedance 2.5）",
     "continueLastFrame": "用尾帧继续生成下一段",
-    "draftFinal": "用这个样片生成正片"
+    "draftFinal": "用这个样片生成正片",
+    "recapture": "重新下载（{{n}} 个未保存）"
   },
   "queue": {
     "empty": "还没有任务",

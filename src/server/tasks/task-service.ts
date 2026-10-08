@@ -284,6 +284,42 @@ export class TaskService {
   }
 
   /**
+   * 重新下载没落盘成功的结果（用保存的原始链接；链接已过期的跳过）。
+   * 全部补齐后，因落盘失败而记为 partial 的任务改回 succeeded，并清掉落盘错误
+   */
+  async recapture(taskId: string): Promise<TaskRecord> {
+    const task = this.d.store.getTask(taskId);
+    if (!task) throw new TaskInputError('not_found', { zh: '任务不存在', en: 'Task not found' }, [], 404);
+    const now = this.now();
+    const pending = task.results.filter((r) => !r.path && r.remoteUrl && (r.remoteExpiresAt === null || r.remoteExpiresAt > now));
+    if (pending.length === 0) {
+      throw new TaskInputError('nothing_to_capture', { zh: '没有可以重新下载的结果（都已保存，或原始链接已过期）', en: 'Nothing to re-download (all saved, or links expired)' }, [], 409);
+    }
+    const assets: ResultAsset[] = pending.map((r) => ({
+      index: r.index,
+      role: r.role,
+      kind: r.kind,
+      source: { type: 'url', url: r.remoteUrl!, ...(r.remoteExpiresAt !== null ? { expiresAt: r.remoteExpiresAt } : {}) },
+      ...(r.mime ? { mime: r.mime } : {}),
+      ...(r.width ? { width: r.width } : {}),
+      ...(r.height ? { height: r.height } : {}),
+      ...(r.layer ? { layer: r.layer } : {}),
+    }));
+    this.d.store.updateTask(taskId, { capture: 'pending', outputDir: task.outputDir ?? this.d.capture.outputDirFor(task) });
+    const out = await this.d.capture.capture(this.d.store.getTask(taskId)!, assets);
+    const after = this.d.store.getTask(taskId)!;
+    const allSaved = after.results.every((r) => r.path);
+    const captureFailedOnly = after.error?.code === 'CAPTURE_FAILED';
+    this.d.store.updateTask(taskId, {
+      capture: allSaved ? 'done' : out.state === 'failed' ? 'failed' : 'partial',
+      ...(allSaved && captureFailedOnly ? { error: null } : !allSaved ? { error: makeError({ providerId: task.providerId, category: 'network', code: 'CAPTURE_FAILED', message: out.errors.join('；') }) } : {}),
+      ...(allSaved && captureFailedOnly && task.status === 'partial' && task.failures.length === 0 ? { status: 'succeeded' as const } : {}),
+    });
+    this.emit(taskId);
+    return this.d.store.getTask(taskId)!;
+  }
+
+  /**
    * 流式提交（Seedream SSE）：每收到一张图立刻落盘，并把事件转发给调用方。
    * 调用方断开不影响上游读取与落盘。
    */

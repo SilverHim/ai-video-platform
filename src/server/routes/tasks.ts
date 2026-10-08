@@ -118,6 +118,15 @@ export function taskRoutes(deps: AppDeps) {
   });
 
   /** 立即重查（也用于恢复因缺 Key / 连续出错而暂停的轮询） */
+  /** 重新下载没落盘成功的结果 */
+  app.post('/tasks/:id/recapture', async (c) => {
+    try {
+      return c.json({ task: await svc.recapture(c.req.param('id')) });
+    } catch (err) {
+      return inputError(err);
+    }
+  });
+
   app.post('/tasks/:id/refresh', async (c) => {
     const task = await deps.services.scheduler.refresh(c.req.param('id'));
     if (!task) return c.json({ error: { code: 'not_found', message: '任务不存在' } }, 404);

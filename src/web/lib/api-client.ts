@@ -187,6 +187,8 @@ export const api = {
   deleteTask: (id: string, remote = false) => request<{ ok: true }>(`/api/tasks/${id}${remote ? '?remote=1' : ''}`, { method: 'DELETE' }),
   cancelTask: (id: string) => request<{ ok: boolean; task: TaskRecord | null; error?: NormalizedError }>(`/api/tasks/${id}/cancel`, { method: 'POST', body: '{}' }),
   refreshTask: (id: string) => request<{ task: TaskRecord }>(`/api/tasks/${id}/refresh`, { method: 'POST', body: '{}' }).then((r) => r.task),
+  /** 重新下载没落盘成功的结果 */
+  recaptureTask: (id: string) => request<{ task: TaskRecord }>(`/api/tasks/${id}/recapture`, { method: 'POST', body: '{}' }).then((r) => r.task),
 
   async uploadAsset(file: File): Promise<UploadedAsset> {
     const res = await fetch('/api/assets', {

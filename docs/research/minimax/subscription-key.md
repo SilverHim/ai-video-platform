@@ -33,9 +33,12 @@
 
   按字段名推断：`start_time` / `end_time` 是 5 小时窗口起止（毫秒），`remains_time` 是距窗口结束的毫秒数，`*_remaining_percent` 是剩余百分比；`weekly_*` 是周窗口。`*_count` 都是 0，含义不明。这次只返回了一项 `general`，有视频额度的档位是否另有一项未知。平台按这个结构显示，并注明「字段含义按实测推断，以控制台用量条为准」。
 
+- **订阅 Key 调生成接口可用**（2026-10-08，image-01 文生图 1 张，用户确认后执行）：`/v1/image_generation` 用订阅 Key 返回成功；之后剩余额度的 5 小时窗口从 100% 降到 99%，并开始倒计时（窗口从第一次使用起算），周窗口不变。说明确实从订阅额度扣，也印证了 `current_interval_remaining_percent` 的含义。
+- image-01 返回的图片链接是阿里云 OSS 的 **http** 签名链接（`http://…oss-us-east-1.aliyuncs.com/…?Expires=…&OSSAccessKeyId=…&Signature=…`）。平台只允许 https 下载，改为把 http 升级成 https 再下（OSS 支持 https，签名不含协议），实测下载成功。
+
 ## 未明确（需实测）
 
-- 文档只笼统说「按量计价的 API 接口」可用订阅 Key 扣额度，没有逐个点名 `/v2/video_generation`、`/v1/image_generation`。用订阅 Key 调 H3 是否成功，以真实调用为准。
+- 文档只笼统说「按量计价的 API 接口」可用订阅 Key 扣额度，没有逐个点名。`/v1/image_generation` 已实测可用；`/v2/video_generation`（H3）用订阅 Key 是否成功尚未实测。
 - 额度用尽时的错误码：错误码页的 2056（usage limit exceeded，等下一个 5 小时窗口）最可能对应，但原文没写适用哪种 Key（推断）。
 - 免费的 V2 List（我们用来"测试 Key"）能否用订阅 Key 调用，没有说明。
 

@@ -9,6 +9,7 @@ import { getModel } from '../../../shared/providers/registry';
 import { useText } from '../../i18n/useText';
 import { api } from '../../lib/api-client';
 import { useStudio } from '../../stores/studio';
+import { useTasks } from '../../stores/tasks';
 import { Badge, Button } from '../../ui/primitives';
 
 const STATUS_TONE: Record<string, 'muted' | 'accent' | 'warn' | 'danger' | 'ok'> = {
@@ -208,6 +209,7 @@ export function TaskResult({ task, compact = false }: { task: TaskRecord; compac
         </Button>
       ) : null}
       {task.failures.length ? <p className="text-xs text-[var(--color-warn)]">{t('results.failures', { n: task.failures.length })}</p> : null}
+      <RecaptureButton task={task} />
       {base ? <LayerViewer base={base} layers={layers} /> : null}
       {media.length ? (
         // 按容器宽度排列：窄栏里视频独占一行
@@ -219,6 +221,37 @@ export function TaskResult({ task, compact = false }: { task: TaskRecord; compac
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** 有结果没下载到本地（且原始链接还在）时，提供「重新下载」 */
+function RecaptureButton({ task }: { task: TaskRecord }) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  // 链接是否过期交给服务端判断（过期时返回明确提示）
+  const pending = task.results.filter((r) => !r.path && r.remoteUrl);
+  if (pending.length === 0 || task.capture === 'pending') return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <Button
+        size="sm"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setMessage(null);
+          void api
+            .recaptureTask(task.id)
+            .then((done) => useTasks.getState().upsert(done))
+            .catch((e: unknown) => setMessage(t('error.generic', { message: e instanceof Error ? e.message : String(e) })))
+            .finally(() => setBusy(false));
+        }}
+      >
+        <Download size={12} />
+        {t('results.recapture', { n: pending.length })}
+      </Button>
+      {message ? <span className="text-[var(--color-danger)]">{message}</span> : null}
     </div>
   );
 }

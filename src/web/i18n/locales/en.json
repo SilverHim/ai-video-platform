@@ -118,7 +118,8 @@
     "editVideo": "Edit this video (Seedance 2.5)",
     "extendVideo": "Extend this video (Seedance 2.5)",
     "continueLastFrame": "Continue from last frame",
-    "draftFinal": "Generate final from this draft"
+    "draftFinal": "Generate final from this draft",
+    "recapture": "Re-download ({{n}} not saved)"
   },
   "queue": {
     "empty": "No tasks yet",

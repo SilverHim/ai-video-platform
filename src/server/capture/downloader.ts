@@ -7,7 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { sleep } from '../upstream/limiter.js';
 import { USER_AGENT } from '../upstream/http.js';
-import { assertSafeRemoteUrl } from './net-guard.js';
+import { assertSafeRemoteUrl, upgradeToHttps } from './net-guard.js';
 
 export interface Downloaded {
   bytes: number;
@@ -56,7 +56,7 @@ export class HttpDownloader implements Downloader {
     let lastErr: unknown;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const safe = await assertSafeRemoteUrl(url);
+        const safe = await assertSafeRemoteUrl(upgradeToHttps(url));
         const res = await undiciFetch(safe, { headers: { 'User-Agent': USER_AGENT }, dispatcher: this.agent, redirect: 'follow', ...(signal ? { signal } : {}) });
         if (!res.ok || !res.body) throw new Error(`下载失败：HTTP ${res.status}`);
         if (res.url && res.url !== safe.toString()) await assertSafeRemoteUrl(res.url);
