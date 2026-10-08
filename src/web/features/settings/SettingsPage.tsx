@@ -4,6 +4,7 @@ import { useOutletContext } from 'react-router';
 import type { HealthInfo, KeyStatus, ProviderId } from '../../../shared/api-contract';
 import { api, ApiRequestError } from '../../lib/api-client';
 import { useText } from '../../i18n/useText';
+import { EndpointCard } from './EndpointCard';
 import { McpCard } from './McpCard';
 
 function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeyStatus) => void }) {
@@ -110,6 +111,10 @@ export function SettingsPage() {
         {keys.map((k) => (
           <KeyCard key={k.provider} status={k} onChange={(s) => setKeys((prev) => prev.map((p) => (p.provider === s.provider ? s : p)))} />
         ))}
+      </section>
+      <section className="space-y-3">
+        <h3 className="font-medium">{t('endpoint.title')}</h3>
+        <EndpointCard />
       </section>
       <section className="space-y-3">
         <h3 className="font-medium">{t('mcp.title')}</h3>

@@ -1,4 +1,15 @@
-import { CLIENT_HEADER, CLIENT_HEADER_VALUE, type HealthInfo, type KeyStatus, type ProviderId } from '../../shared/api-contract';
+import {
+  CLIENT_HEADER,
+  CLIENT_HEADER_VALUE,
+  type ControlCredentialStatus,
+  type EndpointCreateInput,
+  type EndpointCreatePlan,
+  type EndpointInfo,
+  type EndpointUpdateInput,
+  type HealthInfo,
+  type KeyStatus,
+  type ProviderId,
+} from '../../shared/api-contract';
 import type { FormInput, Issue, MediaMeta } from '../../shared/catalog/types';
 import type { I18nText } from '../../shared/i18n';
 import { SseParser } from '../../shared/sse/parse';
@@ -107,6 +118,27 @@ export const api = {
   listKeys: () => request<{ keys: KeyStatus[] }>('/api/keys'),
   setKey: (provider: ProviderId, apiKey: string) => request<{ key: KeyStatus }>(`/api/keys/${provider}`, { method: 'PUT', body: JSON.stringify({ apiKey }) }),
   clearKey: (provider: ProviderId) => request<{ key: KeyStatus }>(`/api/keys/${provider}`, { method: 'DELETE' }),
+
+  /* BytePlus 控制面：AK/SK 与推理接入点（Endpoint）管理 */
+  controlCredentials: () => request<{ credentials: ControlCredentialStatus }>('/api/control/credentials').then((r) => r.credentials),
+  setControlCredentials: (accessKeyId: string, secretAccessKey: string) =>
+    request<{ credentials: ControlCredentialStatus }>('/api/control/credentials', { method: 'PUT', body: JSON.stringify({ accessKeyId, secretAccessKey }) }).then((r) => r.credentials),
+  clearControlCredentials: () => request<{ credentials: ControlCredentialStatus }>('/api/control/credentials', { method: 'DELETE' }).then((r) => r.credentials),
+  testControlCredentials: () => request<{ ok: true; total: number | null }>('/api/control/credentials/test', { method: 'POST' }),
+  listEndpoints: (opts: { modelId?: string; refresh?: boolean } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.modelId) q.set('modelId', opts.modelId);
+    if (opts.refresh) q.set('refresh', '1');
+    const qs = q.toString();
+    return request<{ items: EndpointInfo[] }>(`/api/endpoints${qs ? `?${qs}` : ''}`).then((r) => r.items);
+  },
+  planEndpoint: (input: EndpointCreateInput) => request<EndpointCreatePlan>('/api/endpoints/plan', { method: 'POST', body: JSON.stringify(input) }),
+  createEndpoint: (input: EndpointCreateInput) => request<{ id: string; endpoint: EndpointInfo | null; warnings: I18nText[] }>('/api/endpoints', { method: 'POST', body: JSON.stringify(input) }),
+  updateEndpoint: (id: string, input: EndpointUpdateInput) => request<{ ok: true; warnings: I18nText[] }>(`/api/endpoints/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  startEndpoint: (id: string) => request<{ ok: true }>(`/api/endpoints/${encodeURIComponent(id)}/start`, { method: 'POST' }),
+  stopEndpoint: (id: string) => request<{ ok: true }>(`/api/endpoints/${encodeURIComponent(id)}/stop`, { method: 'POST' }),
+  /** 删除需要确认头：值等于要删的 ID（界面二次确认后才调用） */
+  deleteEndpoint: (id: string) => request<{ ok: true }>(`/api/endpoints/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'x-confirm-delete': id } }),
   listPresets: (modelId?: string) => request<{ presets: PresetRecord[] }>(`/api/presets${modelId ? `?modelId=${encodeURIComponent(modelId)}` : ''}`).then((r) => r.presets),
   savePreset: (p: Pick<PresetRecord, 'name' | 'modelId' | 'modeId' | 'values' | 'prompt'> & { id?: string }) => request<{ preset: PresetRecord }>(`/api/presets${p.id ? `/${p.id}` : ''}`, { method: 'PUT', body: JSON.stringify(p) }).then((r) => r.preset),
   deletePreset: (id: string) => request<{ ok: true }>(`/api/presets/${id}`, { method: 'DELETE' }),

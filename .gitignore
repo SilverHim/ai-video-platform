@@ -12,3 +12,8 @@ test-results/
 .DS_Store
 Thumbs.db
 .claude/
+
+# 从云控制台下载的 AK/SK 文件，绝不能提交（仓库公开）
+AccessKey*.txt
+AccessKey*.csv
+*accessKeys*.csv

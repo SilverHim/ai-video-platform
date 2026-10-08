@@ -1,5 +1,5 @@
 import { readFileSync, renameSync, writeFileSync, chmodSync, existsSync, unlinkSync } from 'node:fs';
-import { PROVIDER_IDS, type KeySource, type KeyStatus, type ProviderId } from '../shared/api-contract.js';
+import { PROVIDER_IDS, type ControlCredentialStatus, type KeySource, type KeyStatus, type ProviderId } from '../shared/api-contract.js';
 
 /** 环境变量覆盖：优先于 keys.json */
 export const KEY_ENV_VARS: Record<ProviderId, string> = {
@@ -12,9 +12,19 @@ interface StoredKey {
   updatedAt: number;
 }
 
+/** BytePlus 控制面 AK/SK（推理接入点管理用） */
+export const CONTROL_ENV_VARS = { accessKeyId: 'BYTEPLUS_ACCESS_KEY_ID', secretAccessKey: 'BYTEPLUS_SECRET_ACCESS_KEY' } as const;
+
+interface StoredControl {
+  accessKeyId: string;
+  secretAccessKey: string;
+  updatedAt: number;
+}
+
 interface KeyFile {
   version: 1;
   providers: Partial<Record<ProviderId, StoredKey>>;
+  controlPlane?: StoredControl;
 }
 
 export class KeyValidationError extends Error {}
@@ -23,6 +33,15 @@ export class KeyValidationError extends Error {}
 export function maskKey(key: string): string {
   if (key.length <= 12) return '••••';
   return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
+function normalizeCredential(raw: unknown, label: string): string {
+  if (typeof raw !== 'string') throw new KeyValidationError(`${label} 必须是字符串`);
+  const v = raw.trim();
+  if (!v) throw new KeyValidationError(`${label} 不能为空`);
+  if (v.length > 512) throw new KeyValidationError(`${label} 过长`);
+  if (/\s/.test(v)) throw new KeyValidationError(`${label} 不能包含空白字符`);
+  return v;
 }
 
 export function normalizeKey(raw: unknown): string {
@@ -94,9 +113,53 @@ export class Keystore {
     const data = this.read();
     if (data.providers[provider]) {
       delete data.providers[provider];
-      if (Object.keys(data.providers).length === 0 && existsSync(this.file)) unlinkSync(this.file);
-      else this.write(data);
+      this.writeOrRemove(data);
     }
     return this.status(provider);
+  }
+
+  /** 文件里什么都不剩时删掉文件 */
+  private writeOrRemove(data: KeyFile): void {
+    if (Object.keys(data.providers).length === 0 && !data.controlPlane) {
+      if (existsSync(this.file)) unlinkSync(this.file);
+    } else this.write(data);
+  }
+
+  /* ---------------- 控制面 AK/SK ---------------- */
+
+  /** 服务端内部取原文 AK/SK；环境变量两项都设置时优先 */
+  getControl(): { accessKeyId: string; secretAccessKey: string } | null {
+    const ak = this.env[CONTROL_ENV_VARS.accessKeyId]?.trim();
+    const sk = this.env[CONTROL_ENV_VARS.secretAccessKey]?.trim();
+    if (ak && sk) return { accessKeyId: ak, secretAccessKey: sk };
+    const stored = this.read().controlPlane;
+    return stored ? { accessKeyId: stored.accessKeyId, secretAccessKey: stored.secretAccessKey } : null;
+  }
+
+  controlStatus(): ControlCredentialStatus {
+    const ak = this.env[CONTROL_ENV_VARS.accessKeyId]?.trim();
+    const sk = this.env[CONTROL_ENV_VARS.secretAccessKey]?.trim();
+    if (ak && sk) return { configured: true, source: 'env', maskedAccessKeyId: maskKey(ak), updatedAt: null };
+    const stored = this.read().controlPlane;
+    if (stored) return { configured: true, source: 'file', maskedAccessKeyId: maskKey(stored.accessKeyId), updatedAt: stored.updatedAt };
+    return { configured: false, source: 'none', maskedAccessKeyId: null, updatedAt: null };
+  }
+
+  setControl(rawAk: unknown, rawSk: unknown, now = Date.now()): ControlCredentialStatus {
+    const accessKeyId = normalizeCredential(rawAk, 'AccessKey ID');
+    const secretAccessKey = normalizeCredential(rawSk, 'Secret Access Key');
+    const data = this.read();
+    data.controlPlane = { accessKeyId, secretAccessKey, updatedAt: now };
+    this.write(data);
+    return this.controlStatus();
+  }
+
+  clearControl(): ControlCredentialStatus {
+    const data = this.read();
+    if (data.controlPlane) {
+      delete data.controlPlane;
+      this.writeOrRemove(data);
+    }
+    return this.controlStatus();
   }
 }

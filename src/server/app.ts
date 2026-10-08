@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AssetStore } from './assets/asset-store.js';
 import type { CaptureService } from './capture/capture.js';
 import type { ResolvedConfig } from './config.js';
+import type { ArkControlClient } from './controlplane/ark-control.js';
 import type { EventBus } from './events.js';
 import type { Keystore } from './keystore.js';
 import { accessLog } from './middleware/logger.js';
@@ -11,6 +12,7 @@ import { assetRoutes } from './routes/assets.js';
 import { eventRoutes } from './routes/events.js';
 import { fileRoutes } from './routes/files.js';
 import { healthRoutes } from './routes/health.js';
+import { endpointRoutes } from './routes/endpoints.js';
 import { keyRoutes } from './routes/keys.js';
 import { taskRoutes } from './routes/tasks.js';
 import { libraryRoutes } from './routes/library.js';
@@ -28,6 +30,8 @@ export interface Services {
   capture: CaptureService;
   events: EventBus;
   scheduler: Scheduler;
+  /** ModelArk 控制面（推理接入点管理，AK/SK） */
+  control: ArkControlClient;
 }
 
 export interface AppDeps {
@@ -62,6 +66,7 @@ export function createApp(deps: AppDeps) {
   app.route('/api/events', eventRoutes(deps));
   app.route('/api', taskRoutes(deps));
   app.route('/api', libraryRoutes(deps));
+  app.route('/api', endpointRoutes(deps));
   const mcpToken = new McpTokenStore(deps.config.paths.mcpToken);
   app.get('/api/mcp', (c) => {
     const url = `http://127.0.0.1:${deps.getPort()}/mcp`;

@@ -46,3 +46,22 @@
 - 文档只写了控制台按钮，没写对应的接口取值。`arkcli +deploy --moderation` 的 Strategy 可选 `Basic` / `Customized` / `Default` / `Skip`，含义也没有文档说明。
 - **实物对照**：用户在控制台建了一个关闭 Content filter 的 Endpoint，`arkcli infer endpoint get` 回读到 `Moderation.Strategy = "Skip"`。之后用 `arkcli +deploy --moderation '{"Strategy": "Skip"}'` 建了 flash 的 Endpoint，回读结果相同。所以「关闭内容过滤」在接口里就是 `Moderation.Strategy = Skip`。
 - 管理 Endpoint 属于控制面，要用账号身份（SSO 或 AK/SK）；生成调用属于数据面，用 API Key，把请求里的 `model` 换成 `ep-…` 即可。
+
+## 4. 控制面接口实测（AK/SK 直连，2026-10-08）
+
+官方 Control plane API 文档（CreateEndpoint / UpdateEndpoint / ListEndpoints / GetEndpoint / Start / Stop / DeleteEndpoint，`Version=2024-01-01`，Host `ark.ap-southeast-1.byteplusapi.com`）没有列出 `Moderation`。用一个临时 Endpoint（Seedream 5.0 lite，测完已删）实测：
+
+| 实测项 | 结果 |
+|---|---|
+| 签名（按 [Calculating a signature](https://docs.byteplus.com/en/docs/byteplus-platform/reference-how-to-calculate-a-signature)，SignedHeaders=host;x-content-sha256;x-date） | 真实 ListEndpoints 返回 200 |
+| 默认新建（不传 Moderation）后回读 | `Moderation.Strategy = "Default"`（内容过滤开启） |
+| UpdateEndpoint 传 `Moderation.Strategy = "Skip"`（运行中） | 成功，回读立即为 Skip |
+| UpdateEndpoint 改回 `Default` | 成功，回读为 Default |
+| GetEndpoint 返回结构 | 字段**直接平铺在 `Result`** 里；文档示例写的是包在 `Result.Endpoint` 里，与实际不符 |
+| 删除运行中的 Endpoint | 403 `OperationDenied.Running`（要求先停止）；Stop 之后等到 `Stopped` 再删，成功 |
+| ListEndpoints | 条目里带 `Moderation` |
+
+平台的处理：
+- 内容过滤用 `Moderation.Strategy`，开 = `Default`，关 = `Skip`；新建和修改后都会回读核对。
+- 删除时，运行中的先自动停止，等到 Stopped 再删（最多等 120 秒）。
+- 详情接口平铺和包一层两种结构都能读。

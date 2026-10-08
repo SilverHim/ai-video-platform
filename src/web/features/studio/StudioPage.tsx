@@ -1,4 +1,3 @@
-import clsx from 'clsx';
 import { Loader2, RotateCcw, Send } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -9,7 +8,7 @@ import { useText } from '../../i18n/useText';
 import { api, ApiRequestError } from '../../lib/api-client';
 import { useStudio } from '../../stores/studio';
 import { useTasks } from '../../stores/tasks';
-import { Badge, Button, inputClass, Panel, Segmented } from '../../ui/primitives';
+import { Badge, Button, Panel, Segmented } from '../../ui/primitives';
 import { ConsentDialog } from '../assets/ConsentDialog';
 import { SlotList } from '../assets/SlotList';
 import { ParamRenderer } from '../params/ParamRenderer';
@@ -18,6 +17,7 @@ import { PromptEditor, type PromptEditorHandle } from '../prompt/PromptEditor';
 import { TaskQueue } from '../queue/TaskQueue';
 import { TaskResult } from '../results/ResultView';
 import { IssuesPanel } from './IssuesPanel';
+import { EndpointSelect } from './EndpointSelect';
 import { ModelBar } from './ModelBar';
 import { PresetBar } from './PresetBar';
 
@@ -148,10 +148,8 @@ export function StudioPage() {
           <Panel title={t('studio.params')}>
             <ParamRenderer evaluated={evaluated} onChange={setValue} />
             {model.allowModelOverride ? (
-              <div className="mt-4 space-y-1">
-                <div className="text-sm font-medium">{t('studio.modelOverride')}</div>
-                <input className={clsx(inputClass, 'w-full font-mono text-xs')} placeholder="ep-xxxxxxxx" value={form.modelOverride ?? ''} onChange={(e) => setModelOverride(e.target.value.trim())} />
-                <p className="text-xs text-[var(--color-muted)]">{t('studio.modelOverrideHint')}</p>
+              <div className="mt-4">
+                <EndpointSelect modelId={model.id} value={form.modelOverride} onChange={setModelOverride} />
               </div>
             ) : null}
           </Panel>

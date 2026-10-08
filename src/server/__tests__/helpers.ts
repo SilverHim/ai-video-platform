@@ -21,6 +21,8 @@ export function tempDir(prefix = 'ark-test-'): { dir: string; cleanup: () => voi
 export interface MakeAppOptions extends Partial<ServerOptions> {
   env?: NodeJS.ProcessEnv;
   fetchImpl?: FetchLike;
+  /** 控制面（Endpoint 管理）的 fetch，默认 mock */
+  controlFetch?: FetchLike;
   downloader?: Downloader;
   catalog?: Catalog;
 }
@@ -28,10 +30,16 @@ export interface MakeAppOptions extends Partial<ServerOptions> {
 /** 测试用应用：默认 mock 上游，环境变量隔离 */
 export function makeApp(opts: MakeAppOptions = {}, env: NodeJS.ProcessEnv = {}) {
   const tmp = tempDir();
-  const { env: optEnv, fetchImpl, downloader, catalog, ...serverOpts } = opts;
+  const { env: optEnv, fetchImpl, controlFetch, downloader, catalog, ...serverOpts } = opts;
   const config = resolveConfig({ dataDir: tmp.dir, port: PORT, mock: true, ...serverOpts });
   ensureDataDirs(config.paths);
-  const container = createContainer(config, { env: optEnv ?? env, ...(fetchImpl ? { fetchImpl } : {}), ...(downloader ? { downloader } : {}), ...(catalog ? { catalog } : {}) });
+  const container = createContainer(config, {
+    env: optEnv ?? env,
+    ...(fetchImpl ? { fetchImpl } : {}),
+    ...(controlFetch ? { controlFetch } : {}),
+    ...(downloader ? { downloader } : {}),
+    ...(catalog ? { catalog } : {}),
+  });
   const app = createApp({ config, keystore: container.keystore, store: container.store, services: container.services, version: 'test', getPort: () => PORT, quiet: true, ...(catalog ? { catalog } : {}) });
   return {
     app,
