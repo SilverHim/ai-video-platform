@@ -302,5 +302,17 @@
     "filterToggle": "「{{name}}」的内容过滤",
     "deleting": "正在停止并删除…（运行中的要先停下，最多约 2 分钟）",
     "loading": "加载 Endpoint 列表…"
+  },
+  "credential": {
+    "label": "用哪个 Key",
+    "kind": {
+      "paygo": "按量 Key",
+      "subscription": "订阅 Key"
+    },
+    "notConfigured": "未配置",
+    "fromQuota": "按量价折算，从订阅额度扣（不扣余额）",
+    "quota": "查看剩余额度（免费）",
+    "notSubscriptionKey": "这看起来不是订阅 Key（订阅 Key 以 sk-cp- 开头）",
+    "isSubscriptionKey": "这是订阅 Key（sk-cp- 开头），请填到「订阅 Key」一栏"
   }
 }

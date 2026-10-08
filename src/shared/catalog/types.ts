@@ -78,7 +78,12 @@ export interface FormInput {
   modelOverride?: string;
   /** 派生自哪个已有任务（样片转正片、编辑 / 延长时使用） */
   derivedFrom?: DerivedFrom;
+  /** 用哪种 Key（MiniMax 有按量 / 订阅两种）；不填时有订阅 Key 用订阅，否则用按量。提交后记录实际用的那种 */
+  credential?: CredentialKind;
 }
+
+/** Key 类型：paygo 按量（扣账户余额）；subscription 订阅（MiniMax sk-cp-，从 M Plan / Token Plan 额度扣） */
+export type CredentialKind = 'paygo' | 'subscription';
 
 export interface DerivedFrom {
   /** 本地任务 id */

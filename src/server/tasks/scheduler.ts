@@ -147,7 +147,8 @@ export class Scheduler {
       return;
     }
 
-    const apiKey = this.d.keystore.get(found.provider.id) ?? (this.d.mock ? 'mock-key' : null);
+    // 用提交时记下的那种 Key 查询（MiniMax 有按量 / 订阅两种）
+    const apiKey = this.d.keystore.resolve(found.provider.id, task.form.credential)?.key ?? (this.d.mock ? 'mock-key' : null);
     if (!apiKey) {
       this.d.store.setPoll(taskId, { ...poll, pausedReason: 'missing_key' });
       this.d.store.updateTask(taskId, { error: makeError({ providerId: task.providerId, category: 'auth', code: 'MISSING_KEY', message: '缺少 API Key，已暂停轮询；在设置页填写后点"立即重查"' }) });

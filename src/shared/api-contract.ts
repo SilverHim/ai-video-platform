@@ -1,5 +1,7 @@
 /** 浏览器 / MCP 与本机服务之间的契约：路由前缀、请求头名、通用响应类型 */
 
+import type { CredentialKind } from './catalog/types.js';
+
 export const APP_NAME = 'ai-video-platform';
 export const APP_DISPLAY_NAME = 'AI视频生成平台';
 export const DEFAULT_PORT = 8787;
@@ -13,6 +15,32 @@ export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export function isProviderId(v: string): v is ProviderId {
   return (PROVIDER_IDS as readonly string[]).includes(v);
+}
+
+/**
+ * Key 槽位：每个服务商一个按量 Key；MiniMax 另有订阅 Key（sk-cp-）。
+ * 官方：两种 Key 调同一套接口、不能互换；订阅 Key 按接口单价从订阅额度扣（docs/research/minimax/subscription-key.md）
+ */
+export const KEY_IDS = ['byteplus', 'minimax', 'minimax-subscription'] as const;
+export type KeyId = (typeof KEY_IDS)[number];
+export type KeyKind = CredentialKind;
+export const KEY_SLOTS: Record<KeyId, { provider: ProviderId; kind: KeyKind }> = {
+  byteplus: { provider: 'byteplus', kind: 'paygo' },
+  minimax: { provider: 'minimax', kind: 'paygo' },
+  'minimax-subscription': { provider: 'minimax', kind: 'subscription' },
+};
+
+export function isKeyId(v: string): v is KeyId {
+  return (KEY_IDS as readonly string[]).includes(v);
+}
+
+export function keyIdOf(provider: string, kind: KeyKind): KeyId | null {
+  return KEY_IDS.find((id) => KEY_SLOTS[id].provider === provider && KEY_SLOTS[id].kind === kind) ?? null;
+}
+
+/** 这个服务商有哪几种 Key */
+export function keyKindsOf(provider: string): KeyKind[] {
+  return KEY_IDS.filter((id) => KEY_SLOTS[id].provider === provider).map((id) => KEY_SLOTS[id].kind);
 }
 
 export interface HealthInfo {
@@ -29,7 +57,9 @@ export interface HealthInfo {
 export type KeySource = 'env' | 'file' | 'none';
 
 export interface KeyStatus {
+  keyId: KeyId;
   provider: ProviderId;
+  kind: KeyKind;
   configured: boolean;
   source: KeySource;
   /** 打码后的 Key，例如 sk-a…9f3c；从不返回原文 */

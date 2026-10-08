@@ -38,6 +38,8 @@ export interface McpGenerateInput {
   params?: Record<string, unknown>;
   assets?: Record<string, string[]>;
   model_override?: string;
+  /** MiniMax：用订阅 Key 还是按量 Key */
+  credential?: 'paygo' | 'subscription';
 }
 
 export async function toForm(input: McpGenerateInput, provider: ProviderDef, model: ModelDef, d: { store: Store; assets: AssetStore }): Promise<FormInput> {
@@ -59,6 +61,7 @@ export async function toForm(input: McpGenerateInput, provider: ProviderDef, mod
     slots,
     prompt: input.prompt ?? '',
     ...(input.model_override ? { modelOverride: input.model_override } : {}),
+    ...(input.credential ? { credential: input.credential } : {}),
   };
 }
 

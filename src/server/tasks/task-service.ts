@@ -1,7 +1,8 @@
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
-import type { EvaluatedForm, FormInput, Issue, ModelDef, ProviderDef, ResolvedAssets, UpstreamResponse } from '../../shared/catalog/types.js';
+import { isKeyId, KEY_SLOTS, keyKindsOf } from '../../shared/api-contract.js';
+import type { CredentialKind, EvaluatedForm, FormInput, Issue, ModelDef, ProviderDef, ResolvedAssets, UpstreamResponse } from '../../shared/catalog/types.js';
 import { evaluate, CatalogLookupError } from '../../shared/engine/evaluate.js';
 import type { I18nText } from '../../shared/i18n.js';
 import * as registry from '../../shared/providers/registry.js';
@@ -47,6 +48,8 @@ export interface PreviewResult {
   request: { method: string; url: string; body: Record<string, unknown>; bodyBytes: number; stream: boolean; endpointId: string };
   curl: string;
   cost: { amount: number; currency: 'USD'; basis: I18nText; confidence: string } | null;
+  /** 有多种 Key 的服务商：这次会用哪种（订阅 Key 按接口单价从订阅额度扣，不扣余额）；只有一种 Key 时为 null */
+  credential: { kind: CredentialKind; configured: boolean } | null;
   notes: I18nText[];
 }
 
@@ -115,28 +118,40 @@ export class TaskService {
     const body = sanitizeForPreview(built.body);
     const issues = [...evaluated.issues, ...built.issues];
     const cost = model.estimateCost?.(evaluated.ctx) ?? null;
+    const multiKey = keyKindsOf(provider.id).length > 1;
+    const resolved = multiKey ? this.d.keystore.resolve(provider.id, form.credential) : null;
+    const credential = multiKey ? { kind: resolved?.kind ?? form.credential ?? 'paygo', configured: Boolean(resolved) } : null;
+    const keyEnvVar = credential?.kind === 'subscription' ? 'MINIMAX_SUBSCRIPTION_KEY' : (KEY_ENV_BY_PROVIDER[provider.id] ?? 'API_KEY');
     return {
       canSubmit: !issues.some((i) => i.severity === 'error'),
       uploads: this.d.resolver.consentInfo(evaluated, provider.id, opts.tempHost),
       issues,
       request: { method: built.method, url, body, bodyBytes: built.bodyBytes, stream: built.stream, endpointId: built.endpointId },
-      curl: toCurl({ method: built.method, url, body, stream: built.stream, keyEnvVar: KEY_ENV_BY_PROVIDER[provider.id] ?? 'API_KEY' }).command,
+      curl: toCurl({ method: built.method, url, body, stream: built.stream, keyEnvVar }).command,
       cost,
+      credential,
       notes: built.notes,
     };
   }
 
-  private apiKey(provider: ProviderDef): string {
-    const key = this.d.keystore.get(provider.id);
-    if (key) return key;
-    if (this.d.mock) return 'mock-key';
+  /** 取 Key：指定了类型只用那种（不擅自换成按量）；没指定时有订阅用订阅，否则按量 */
+  private credentials(provider: ProviderDef, pref?: CredentialKind): { key: string; kind: CredentialKind } {
+    const r = this.d.keystore.resolve(provider.id, pref);
+    if (r) return { key: r.key, kind: r.kind };
+    if (this.d.mock) return { key: 'mock-key', kind: pref ?? 'paygo' };
+    if (pref === 'subscription') throw new TaskInputError('missing_key', { zh: `还没有配置 ${provider.label.zh} 的订阅 Key（设置页填写）`, en: `No subscription key for ${provider.label.en} (set it in Settings)` }, [], 400);
     throw new TaskInputError('missing_key', { zh: `还没有配置 ${provider.label.zh} 的 API Key（设置页填写）`, en: `No API key for ${provider.label.en} (set it in Settings)` }, [], 400);
+  }
+
+  private apiKey(provider: ProviderDef, pref?: CredentialKind): string {
+    return this.credentials(provider, pref).key;
   }
 
   /** 第一阶段：校验、建任务记录、解析素材、构建请求 */
   private async begin(form: FormInput, origin: TaskOrigin, opts: SubmitOptions = {}): Promise<{ p: Prepared; task: TaskRecord; built: BuiltRequest; apiKey: string }> {
     const p = this.prepare(form);
-    const apiKey = this.apiKey(p.provider);
+    const cred = this.credentials(p.provider, form.credential);
+    const apiKey = cred.key;
     if (!p.evaluated.canSubmit) {
       throw new TaskInputError('invalid_form', { zh: '参数校验未通过', en: 'Validation failed' }, p.evaluated.issues.filter((i) => i.severity === 'error'));
     }
@@ -158,7 +173,8 @@ export class TaskService {
       status: 'resolving_assets',
       upstreamTaskId: null,
       baseUrlId: defaultBaseUrlId(p.provider),
-      form: normalizeForm(form),
+      // 有多种 Key 的服务商记下实际用的那种：之后轮询、取消用同一种
+      form: { ...normalizeForm(form), ...(keyKindsOf(p.provider.id).length > 1 ? { credential: cred.kind } : {}) },
       request: null,
       error: null,
       failures: [],
@@ -389,7 +405,7 @@ export class TaskService {
     const ep = found?.model.endpoints.cancel;
     if (!found || !ep || !task.upstreamTaskId) throw new TaskInputError('not_supported', { zh: '该任务不支持取消或删除云端记录', en: 'Cancel/delete is not supported for this task' }, [], 400);
     if (task.status === 'running' || task.status === 'streaming') throw new TaskInputError('not_allowed', { zh: '生成中的任务不能取消', en: 'Running tasks cannot be cancelled' }, [], 409);
-    const apiKey = this.apiKey(found.provider);
+    const apiKey = this.apiKey(found.provider, task.form.credential);
     const res = await this.d.upstream.call({ provider: found.provider, endpointId: ep, baseUrlId: task.baseUrlId, apiKey, pathParams: { id: task.upstreamTaskId } }).catch((err: unknown) => {
       throw new TaskInputError('upstream_error', { zh: err instanceof Error ? err.message : String(err), en: err instanceof Error ? err.message : String(err) }, [], 502);
     });
@@ -409,22 +425,40 @@ export class TaskService {
     const ep = provider && Object.values(provider.endpoints).find((e) => e.id === 'video.list');
     if (!provider || !ep) throw new TaskInputError('unknown_provider', { zh: `未知服务商：${providerId}`, en: `Unknown provider: ${providerId}` }, [], 404);
     const res = await this.d.upstream.call({ provider, endpointId: ep.id, apiKey: this.apiKey(provider), query });
+    // 云端任务列表用默认 Key（有订阅用订阅）：两种 Key 属于同一账号
     const err = provider.normalizeError(res);
     if (err) throw new TaskInputError('upstream_error', { zh: err.message, en: err.message }, [], res.status >= 400 ? res.status : 502);
     return { status: res.status, body: sanitizeForPreview(safeJson(res.bodyText) ?? null) };
   }
 
   /** 免费校验 Key（BytePlus / MiniMax 的任务列表接口） */
-  async testKey(providerId: string): Promise<{ ok: boolean; error?: NormalizedError; status?: number }> {
-    const provider = this.catalog.getProvider(providerId);
-    if (!provider?.keyTest) throw new TaskInputError('unknown_provider', { zh: `未知服务商：${providerId}`, en: `Unknown provider: ${providerId}` }, [], 404);
-    const apiKey = this.apiKey(provider);
+  /** 订阅 Key 的剩余额度（免费只读）。返回格式文档未写：先原样返回，按实测再解析 */
+  async quota(keyId: string): Promise<{ status: number; body: unknown; error?: NormalizedError }> {
+    if (!isKeyId(keyId) || KEY_SLOTS[keyId].kind !== 'subscription') throw new TaskInputError('not_supported', { zh: '只有订阅 Key 能查剩余额度', en: 'Only subscription keys have a quota' }, [], 400);
+    const provider = this.catalog.getProvider(KEY_SLOTS[keyId].provider);
+    if (!provider) throw new TaskInputError('unknown_provider', { zh: '未知服务商', en: 'Unknown provider' }, [], 404);
+    const res = await this.d.upstream.call({ provider, endpointId: 'plan.remains', baseUrlId: 'www', apiKey: this.apiKey(provider, 'subscription') });
+    const err = provider.normalizeError(res);
+    return { status: res.status, body: safeJson(res.bodyText) ?? null, ...(err ? { error: err } : {}) };
+  }
+
+  /** 免费校验某个 Key 槽位：订阅 Key 查剩余额度，按量 Key 走服务商的 keyTest */
+  async testKey(keyId: string): Promise<{ ok: boolean; error?: NormalizedError; status?: number }> {
+    if (!isKeyId(keyId)) throw new TaskInputError('unknown_key', { zh: `未知的 Key 槽位：${keyId}`, en: `Unknown key slot: ${keyId}` }, [], 404);
+    const slot = KEY_SLOTS[keyId];
+    const provider = this.catalog.getProvider(slot.provider);
+    if (!provider?.keyTest) throw new TaskInputError('unknown_provider', { zh: `未知服务商：${slot.provider}`, en: `Unknown provider: ${slot.provider}` }, [], 404);
+    const apiKey = this.apiKey(provider, slot.kind);
+    const call =
+      slot.kind === 'subscription'
+        ? { endpointId: 'plan.remains', baseUrlId: 'www' }
+        : { endpointId: provider.keyTest.endpointId, ...(provider.keyTest.query ? { query: provider.keyTest.query } : {}) };
     try {
-      const res = await this.d.upstream.call({ provider, endpointId: provider.keyTest.endpointId, apiKey, ...(provider.keyTest.query ? { query: provider.keyTest.query } : {}) });
+      const res = await this.d.upstream.call({ provider, apiKey, ...call });
       const err = provider.normalizeError(res);
       return err ? { ok: false, error: err, status: res.status } : { ok: true, status: res.status };
     } catch (err) {
-      return { ok: false, error: err instanceof UpstreamError ? err.error : makeError({ providerId, category: 'network', code: 'NETWORK', message: String(err) }) };
+      return { ok: false, error: err instanceof UpstreamError ? err.error : makeError({ providerId: slot.provider, category: 'network', code: 'NETWORK', message: String(err) }) };
     }
   }
 }
@@ -462,5 +496,6 @@ export function normalizeForm(form: FormInput): FormInput {
     ...(form.rawOverrides ? { rawOverrides: form.rawOverrides } : {}),
     ...(form.modelOverride ? { modelOverride: form.modelOverride } : {}),
     ...(form.derivedFrom ? { derivedFrom: form.derivedFrom } : {}),
+    ...(form.credential === 'paygo' || form.credential === 'subscription' ? { credential: form.credential } : {}),
   };
 }

@@ -7,10 +7,10 @@ import {
   type EndpointInfo,
   type EndpointUpdateInput,
   type HealthInfo,
+  type KeyId,
   type KeyStatus,
-  type ProviderId,
 } from '../../shared/api-contract';
-import type { FormInput, Issue, MediaMeta } from '../../shared/catalog/types';
+import type { CredentialKind, FormInput, Issue, MediaMeta } from '../../shared/catalog/types';
 import type { I18nText } from '../../shared/i18n';
 import { SseParser } from '../../shared/sse/parse';
 import type { NormalizedError } from '../../shared/task/errors';
@@ -72,6 +72,8 @@ export interface PreviewResponse {
   request: { method: string; url: string; body: Record<string, unknown>; bodyBytes: number; stream: boolean; endpointId: string };
   curl: string;
   cost: { amount: number; currency: 'USD'; basis: I18nText; confidence: string } | null;
+  /** 有多种 Key 的服务商：这次用哪种 */
+  credential: { kind: CredentialKind; configured: boolean } | null;
   notes: I18nText[];
 }
 
@@ -116,8 +118,10 @@ async function readSse(res: Response, onEvent: (event: string | null, data: stri
 export const api = {
   health: () => request<HealthInfo>('/api/health'),
   listKeys: () => request<{ keys: KeyStatus[] }>('/api/keys'),
-  setKey: (provider: ProviderId, apiKey: string) => request<{ key: KeyStatus }>(`/api/keys/${provider}`, { method: 'PUT', body: JSON.stringify({ apiKey }) }),
-  clearKey: (provider: ProviderId) => request<{ key: KeyStatus }>(`/api/keys/${provider}`, { method: 'DELETE' }),
+  setKey: (keyId: KeyId, apiKey: string) => request<{ key: KeyStatus }>(`/api/keys/${keyId}`, { method: 'PUT', body: JSON.stringify({ apiKey }) }),
+  clearKey: (keyId: KeyId) => request<{ key: KeyStatus }>(`/api/keys/${keyId}`, { method: 'DELETE' }),
+  /** 订阅 Key 的剩余额度（返回格式文档未写，先原样返回） */
+  keyQuota: (keyId: KeyId) => request<{ status: number; body: unknown; error?: NormalizedError }>(`/api/keys/${keyId}/quota`),
 
   /* BytePlus 控制面：AK/SK 与推理接入点（Endpoint）管理 */
   controlCredentials: () => request<{ credentials: ControlCredentialStatus }>('/api/control/credentials').then((r) => r.credentials),
@@ -150,7 +154,7 @@ export const api = {
   rebuildHistory: () => request<{ scanned: number; restored: number }>('/api/outputs/rebuild', { method: 'POST', body: '{}' }),
   mcpInfo: () => request<{ url: string; token: string; command: string }>('/api/mcp'),
   rotateMcpToken: () => request<{ token: string }>('/api/mcp/rotate', { method: 'POST', body: '{}' }),
-  testKey: (provider: ProviderId) => request<{ ok: boolean; status?: number; error?: NormalizedError }>(`/api/keys/${provider}/test`, { method: 'POST', body: '{}' }),
+  testKey: (keyId: KeyId) => request<{ ok: boolean; status?: number; error?: NormalizedError }>(`/api/keys/${keyId}/test`, { method: 'POST', body: '{}' }),
 
   preview: (form: FormInput, signal?: AbortSignal, opts: SubmitOpts = {}) => request<PreviewResponse>('/api/preview', { method: 'POST', body: JSON.stringify({ form }), headers: submitHeaders(opts), ...(signal ? { signal } : {}) }),
   submit: (form: FormInput, opts: SubmitOpts = {}) => request<{ task: TaskRecord }>('/api/tasks', { method: 'POST', body: JSON.stringify({ form }), headers: submitHeaders(opts) }).then((r) => r.task),

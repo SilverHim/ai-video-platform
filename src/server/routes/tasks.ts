@@ -134,9 +134,17 @@ export function taskRoutes(deps: AppDeps) {
     }
   });
 
-  app.post('/keys/:provider/test', async (c) => {
+  app.post('/keys/:keyId/test', async (c) => {
     try {
-      return c.json(await svc.testKey(c.req.param('provider')));
+      return c.json(await svc.testKey(c.req.param('keyId')));
+    } catch (err) {
+      return inputError(err);
+    }
+  });
+
+  app.get('/keys/:keyId/quota', async (c) => {
+    try {
+      return c.json(await svc.quota(c.req.param('keyId')));
     } catch (err) {
       return inputError(err);
     }

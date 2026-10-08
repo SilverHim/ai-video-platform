@@ -17,6 +17,7 @@ import { PromptEditor, type PromptEditorHandle } from '../prompt/PromptEditor';
 import { TaskQueue } from '../queue/TaskQueue';
 import { TaskResult } from '../results/ResultView';
 import { IssuesPanel } from './IssuesPanel';
+import { CredentialPicker } from './CredentialPicker';
 import { EndpointSelect } from './EndpointSelect';
 import { ModelBar } from './ModelBar';
 import { PresetBar } from './PresetBar';
@@ -162,7 +163,13 @@ export function StudioPage() {
                 {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 {submitting ? t('studio.submitting') : t('studio.submit')}
               </Button>
-              {preview?.cost ? <span className="text-sm text-[var(--color-muted)]">≈ ${preview.cost.amount.toFixed(4)}</span> : null}
+              <CredentialPicker providerId={model.providerId} current={preview?.credential?.kind} />
+              {preview?.cost ? (
+                <span className="text-sm text-[var(--color-muted)]">
+                  ≈ ${preview.cost.amount.toFixed(4)}
+                  {preview.credential?.kind === 'subscription' ? ` · ${t('credential.fromQuota')}` : ''}
+                </span>
+              ) : null}
               {evaluated.effective.stream === true ? <Badge tone="accent">SSE</Badge> : null}
             </div>
           </div>

@@ -30,6 +30,10 @@ const generateShape = {
   params: z.record(z.string(), z.unknown()).optional().describe('参数，键为 get_model_schema 返回的字段 key（不是 wire 名）'),
   assets: assetSpec,
   model_override: z.string().optional().describe('BytePlus：用推理接入点 ID（ep-…）覆盖 model'),
+  credential: z
+    .enum(['subscription', 'paygo'])
+    .optional()
+    .describe('MiniMax：subscription 用订阅 Key（从 M Plan / Token Plan 额度扣），paygo 用按量 Key（扣余额）；不填时有订阅 Key 用订阅'),
   temp_host: z.enum(['uguu', 'tmpfiles']).optional().describe('本地视频上传用的公共临时托管站（默认 uguu）'),
   preset_id: z.string().optional().describe('先套用这个预设的模式与参数（list_presets 查），再用 params 覆盖'),
 };

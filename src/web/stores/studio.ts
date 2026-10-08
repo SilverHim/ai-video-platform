@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_MODEL_FILTER, type ModelFilter } from '../../shared/catalog/capabilities';
-import type { AssetRef, DerivedFrom, FormInput, FormValues, OutputKind } from '../../shared/catalog/types';
+import type { AssetRef, CredentialKind, DerivedFrom, FormInput, FormValues, OutputKind } from '../../shared/catalog/types';
 import { listModels, getModel } from '../../shared/providers/registry';
 
 /** 每个模型各自的草稿：切换模型时互不覆盖 */
@@ -26,6 +26,9 @@ interface StudioState {
   /** 本地视频上传用的临时托管站 */
   tempHost: 'uguu' | 'tmpfiles';
   setTempHost: (h: 'uguu' | 'tmpfiles') => void;
+  /** 按服务商选用哪种 Key（MiniMax 有按量 / 订阅）；没选时由服务端决定（有订阅用订阅） */
+  credentials: Partial<Record<string, CredentialKind>>;
+  setCredential: (providerId: string, kind: CredentialKind | null) => void;
   selectModel: (modelId: string) => void;
   selectMode: (modeId: string) => void;
   setValue: (key: string, value: unknown) => void;
@@ -76,6 +79,14 @@ export const useStudio = create<StudioState>()(
         lastByOutput: {},
         tempHost: 'uguu',
         setTempHost: (tempHost) => set({ tempHost }),
+        credentials: {},
+        setCredential: (providerId, kind) =>
+          set((s) => {
+            const next = { ...s.credentials };
+            if (kind) next[providerId] = kind;
+            else delete next[providerId];
+            return { credentials: next };
+          }),
         selectModel: (modelId) => {
           const { drafts, lastByOutput, modelId: prev } = get();
           set({
@@ -166,7 +177,7 @@ export function migrateStudio(persisted: unknown, version: number): Record<strin
 }
 
 /** 当前草稿 → 提交用的表单快照 */
-export function currentForm(state: Pick<StudioState, 'modelId' | 'drafts'>): FormInput | null {
+export function currentForm(state: Pick<StudioState, 'modelId' | 'drafts'> & Partial<Pick<StudioState, 'credentials'>>): FormInput | null {
   if (!state.modelId) return null;
   const found = getModel(state.modelId);
   if (!found) return null;
@@ -181,5 +192,6 @@ export function currentForm(state: Pick<StudioState, 'modelId' | 'drafts'>): For
     prompt: d.prompt,
     ...(d.modelOverride ? { modelOverride: d.modelOverride } : {}),
     ...(d.derivedFrom ? { derivedFrom: d.derivedFrom } : {}),
+    ...(state.credentials?.[found.provider.id] ? { credential: state.credentials[found.provider.id] } : {}),
   };
 }

@@ -302,5 +302,17 @@
     "filterToggle": "Content filter of \"{{name}}\"",
     "deleting": "Stopping and deleting… (a running endpoint is stopped first; up to about 2 minutes)",
     "loading": "Loading endpoints…"
+  },
+  "credential": {
+    "label": "Key",
+    "kind": {
+      "paygo": "Pay-as-you-go key",
+      "subscription": "Subscription key"
+    },
+    "notConfigured": "not set",
+    "fromQuota": "at list price, deducted from the subscription quota (not the balance)",
+    "quota": "Check remaining quota (free)",
+    "notSubscriptionKey": "This does not look like a subscription key (they start with sk-cp-)",
+    "isSubscriptionKey": "This is a subscription key (sk-cp-); put it in the subscription key slot"
   }
 }

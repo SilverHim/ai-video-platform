@@ -9,6 +9,46 @@ afterEach(async () => {
   await cleanup();
 });
 
+describe('MiniMax 两种 Key', () => {
+  const SUB = 'sk-cp-0123456789abcdefSUBSCRIPTION';
+  const PAYGO = 'sk-api-0123456789abcdefPAYGO';
+
+  it('订阅 / 按量各占一个槽位；不指定时优先订阅，指定了只用那种', () => {
+    const tmp = tempDir();
+    cleanup = tmp.cleanup;
+    const ks = new Keystore(`${tmp.dir}/keys.json`, {});
+    ks.set('minimax', PAYGO);
+    expect(ks.resolve('minimax')).toEqual({ keyId: 'minimax', kind: 'paygo', key: PAYGO });
+    expect(ks.resolve('minimax', 'subscription')).toBeNull();
+    ks.set('minimax-subscription', SUB);
+    expect(ks.resolve('minimax')).toEqual({ keyId: 'minimax-subscription', kind: 'subscription', key: SUB });
+    expect(ks.resolve('minimax', 'paygo')?.key).toBe(PAYGO);
+    expect(ks.status('minimax-subscription')).toMatchObject({ provider: 'minimax', kind: 'subscription', configured: true });
+    expect(ks.list().map((k) => k.keyId)).toEqual(['byteplus', 'minimax', 'minimax-subscription']);
+    // BytePlus 只有按量
+    expect(ks.resolve('byteplus', 'subscription')).toBeNull();
+  });
+
+  it('旧文件里 MiniMax 槽位存的是订阅 Key（sk-cp-）时自动挪到订阅槽位', () => {
+    const tmp = tempDir();
+    cleanup = tmp.cleanup;
+    const file = `${tmp.dir}/keys.json`;
+    new Keystore(file, {}).set('minimax', SUB);
+    const ks = new Keystore(file, {});
+    expect(ks.status('minimax').configured).toBe(false);
+    expect(ks.get('minimax-subscription')).toBe(SUB);
+    expect(JSON.parse(readFileSync(file, 'utf8')).providers).toEqual({ 'minimax-subscription': { apiKey: SUB, updatedAt: expect.any(Number) } });
+  });
+
+  it('环境变量 MINIMAX_SUBSCRIPTION_KEY', () => {
+    const tmp = tempDir();
+    cleanup = tmp.cleanup;
+    const ks = new Keystore(`${tmp.dir}/keys.json`, { MINIMAX_SUBSCRIPTION_KEY: SUB });
+    expect(ks.resolve('minimax')).toMatchObject({ kind: 'subscription', key: SUB });
+    expect(ks.status('minimax-subscription').source).toBe('env');
+  });
+});
+
 describe('Keystore', () => {
   it('打码只保留首尾各 4 位', () => {
     expect(maskKey(SECRET)).toBe('sk-t…CRET');
@@ -30,7 +70,7 @@ describe('Keystore', () => {
     expect(ks.status('byteplus')).toMatchObject({ configured: false, source: 'none' });
     ks.set('byteplus', SECRET, 1000);
     expect(ks.get('byteplus')).toBe(SECRET);
-    expect(ks.status('byteplus')).toEqual({ provider: 'byteplus', configured: true, source: 'file', masked: maskKey(SECRET), updatedAt: 1000 });
+    expect(ks.status('byteplus')).toEqual({ keyId: 'byteplus', provider: 'byteplus', kind: 'paygo', configured: true, source: 'file', masked: maskKey(SECRET), updatedAt: 1000 });
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
     ks.clear('byteplus');
     expect(ks.get('byteplus')).toBeNull();

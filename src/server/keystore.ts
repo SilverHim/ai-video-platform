@@ -1,11 +1,15 @@
 import { readFileSync, renameSync, writeFileSync, chmodSync, existsSync, unlinkSync } from 'node:fs';
-import { PROVIDER_IDS, type ControlCredentialStatus, type KeySource, type KeyStatus, type ProviderId } from '../shared/api-contract.js';
+import { KEY_IDS, KEY_SLOTS, keyIdOf, keyKindsOf, type ControlCredentialStatus, type KeyId, type KeyKind, type KeySource, type KeyStatus, type ProviderId } from '../shared/api-contract.js';
 
 /** 环境变量覆盖：优先于 keys.json */
-export const KEY_ENV_VARS: Record<ProviderId, string> = {
+export const KEY_ENV_VARS: Record<KeyId, string> = {
   byteplus: 'ARK_API_KEY',
   minimax: 'MINIMAX_API_KEY',
+  'minimax-subscription': 'MINIMAX_SUBSCRIPTION_KEY',
 };
+
+/** MiniMax 订阅 Key 的前缀（官方 CLI 文档：sk-cp- 订阅、sk-api- 按量） */
+export const SUBSCRIPTION_PREFIX = 'sk-cp-';
 
 interface StoredKey {
   apiKey: string;
@@ -23,7 +27,8 @@ interface StoredControl {
 
 interface KeyFile {
   version: 1;
-  providers: Partial<Record<ProviderId, StoredKey>>;
+  /** 键是 KeyId（旧文件里只有 byteplus / minimax，兼容） */
+  providers: Partial<Record<KeyId, StoredKey>>;
   controlPlane?: StoredControl;
 }
 
@@ -68,11 +73,22 @@ export class Keystore {
     if (!existsSync(this.file)) return { version: 1, providers: {} };
     try {
       const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as KeyFile;
-      if (parsed && parsed.version === 1 && typeof parsed.providers === 'object') return parsed;
+      if (parsed && parsed.version === 1 && typeof parsed.providers === 'object') return this.migrate(parsed);
     } catch {
       // 文件损坏时当作空；写入时会覆盖
     }
     return { version: 1, providers: {} };
+  }
+
+  /** 以前只有一个 MiniMax 槽位：填进去的若是订阅 Key（sk-cp-），挪到订阅槽位 */
+  private migrate(data: KeyFile): KeyFile {
+    const mm = data.providers.minimax;
+    if (mm?.apiKey.startsWith(SUBSCRIPTION_PREFIX) && !data.providers['minimax-subscription']) {
+      data.providers['minimax-subscription'] = mm;
+      delete data.providers.minimax;
+      this.write(data);
+    }
+    return data;
   }
 
   private write(data: KeyFile): void {
@@ -83,39 +99,55 @@ export class Keystore {
   }
 
   /** 服务端内部取原文 Key；没有配置返回 null */
-  get(provider: ProviderId): string | null {
-    const fromEnv = this.env[KEY_ENV_VARS[provider]]?.trim();
+  get(keyId: KeyId): string | null {
+    const fromEnv = this.env[KEY_ENV_VARS[keyId]]?.trim();
     if (fromEnv) return fromEnv;
-    return this.read().providers[provider]?.apiKey ?? null;
+    return this.read().providers[keyId]?.apiKey ?? null;
   }
 
-  status(provider: ProviderId): KeyStatus {
-    const fromEnv = this.env[KEY_ENV_VARS[provider]]?.trim();
-    if (fromEnv) return { provider, configured: true, source: 'env', masked: maskKey(fromEnv), updatedAt: null };
-    const stored = this.read().providers[provider];
-    if (stored) return { provider, configured: true, source: 'file', masked: maskKey(stored.apiKey), updatedAt: stored.updatedAt };
-    return { provider, configured: false, source: 'none' satisfies KeySource, masked: null, updatedAt: null };
+  /**
+   * 按服务商取 Key：指定了类型就只用那种（不擅自换成按量，避免不知不觉扣余额）；
+   * 没指定时有订阅 Key 用订阅，否则用按量
+   */
+  resolve(provider: string, pref?: KeyKind): { keyId: KeyId; kind: KeyKind; key: string } | null {
+    const pick = (kind: KeyKind) => {
+      const keyId = keyIdOf(provider, kind);
+      const key = keyId ? this.get(keyId) : null;
+      return keyId && key ? { keyId, kind, key } : null;
+    };
+    if (pref) return pick(pref);
+    const kinds = keyKindsOf(provider);
+    return (kinds.includes('subscription') ? pick('subscription') : null) ?? pick('paygo');
+  }
+
+  status(keyId: KeyId): KeyStatus {
+    const base = { keyId, provider: KEY_SLOTS[keyId].provider as ProviderId, kind: KEY_SLOTS[keyId].kind };
+    const fromEnv = this.env[KEY_ENV_VARS[keyId]]?.trim();
+    if (fromEnv) return { ...base, configured: true, source: 'env', masked: maskKey(fromEnv), updatedAt: null };
+    const stored = this.read().providers[keyId];
+    if (stored) return { ...base, configured: true, source: 'file', masked: maskKey(stored.apiKey), updatedAt: stored.updatedAt };
+    return { ...base, configured: false, source: 'none' satisfies KeySource, masked: null, updatedAt: null };
   }
 
   list(): KeyStatus[] {
-    return PROVIDER_IDS.map((p) => this.status(p));
+    return KEY_IDS.map((k) => this.status(k));
   }
 
-  set(provider: ProviderId, rawKey: unknown, now = Date.now()): KeyStatus {
+  set(keyId: KeyId, rawKey: unknown, now = Date.now()): KeyStatus {
     const apiKey = normalizeKey(rawKey);
     const data = this.read();
-    data.providers[provider] = { apiKey, updatedAt: now };
+    data.providers[keyId] = { apiKey, updatedAt: now };
     this.write(data);
-    return this.status(provider);
+    return this.status(keyId);
   }
 
-  clear(provider: ProviderId): KeyStatus {
+  clear(keyId: KeyId): KeyStatus {
     const data = this.read();
-    if (data.providers[provider]) {
-      delete data.providers[provider];
+    if (data.providers[keyId]) {
+      delete data.providers[keyId];
       this.writeOrRemove(data);
     }
-    return this.status(provider);
+    return this.status(keyId);
   }
 
   /** 文件里什么都不剩时删掉文件 */

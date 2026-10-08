@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useOutletContext } from 'react-router';
-import type { HealthInfo, KeyStatus, ProviderId } from '../../../shared/api-contract';
+import { keyKindsOf, type HealthInfo, type KeyStatus } from '../../../shared/api-contract';
 import { api, ApiRequestError } from '../../lib/api-client';
 import { useText } from '../../i18n/useText';
 import { EndpointCard } from './EndpointCard';
@@ -13,7 +13,11 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeySta
   const [value, setValue] = useState('');
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [quota, setQuota] = useState<string | null>(null);
   const readOnly = status.source === 'env';
+  // MiniMax 订阅 Key 以 sk-cp- 开头（官方 CLI 文档）：填错槽位时提示，不拦截
+  const multiKind = keyKindsOf(status.provider).length > 1;
+  const mismatch = multiKind && value.trim() !== '' && (status.kind === 'subscription') !== value.trim().startsWith('sk-cp-');
 
   const run = async (fn: () => Promise<{ key: KeyStatus }>, ok: string) => {
     setMessage(null);
@@ -30,7 +34,10 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeySta
   return (
     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4" data-testid={`key-card-${status.provider}`}>
       <div className="mb-2 flex items-center justify-between">
-        <span className="font-medium">{t(`provider.${status.provider}`)}</span>
+        <span className="font-medium">
+          {t(`provider.${status.provider}`)}
+          {multiKind ? ` · ${t(`credential.kind.${status.kind}`)}` : ''}
+        </span>
         <span className="text-sm text-[var(--color-muted)]">
           {status.configured ? `${t('settings.configured')} · ${status.masked ?? ''}` : t('settings.notConfigured')}
         </span>
@@ -42,7 +49,7 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeySta
           className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (value.trim()) void run(() => api.setKey(status.provider as ProviderId, value), t('settings.saved'));
+            if (value.trim()) void run(() => api.setKey(status.keyId, value), t('settings.saved'));
           }}
         >
           <input
@@ -61,7 +68,7 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeySta
             type="button"
             className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
             disabled={!status.configured}
-            onClick={() => void run(() => api.clearKey(status.provider as ProviderId), t('settings.cleared'))}
+            onClick={() => void run(() => api.clearKey(status.keyId), t('settings.cleared'))}
           >
             {t('settings.clear')}
           </button>
@@ -76,7 +83,7 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeySta
             setTesting(true);
             setMessage(null);
             api
-              .testKey(status.provider as ProviderId)
+              .testKey(status.keyId)
               .then((r) => setMessage(r.ok ? t('settings.testOk') : t('settings.testFail', { message: r.error ? `${r.error.code} ${r.error.hint ? tx(r.error.hint) : r.error.message}` : `HTTP ${r.status}` })))
               .catch((e: unknown) => setMessage(t('error.generic', { message: e instanceof Error ? e.message : String(e) })))
               .finally(() => setTesting(false));
@@ -85,7 +92,23 @@ function KeyCard({ status, onChange }: { status: KeyStatus; onChange: (s: KeySta
           {t('settings.test')}
         </button>
       ) : null}
+      {mismatch ? <p className="mt-1 text-xs text-[var(--color-warn)]">{t(status.kind === 'subscription' ? 'credential.notSubscriptionKey' : 'credential.isSubscriptionKey')}</p> : null}
+      {status.kind === 'subscription' && status.configured ? (
+        <button
+          type="button"
+          className="ml-2 mt-2 rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs"
+          onClick={() =>
+            void api
+              .keyQuota(status.keyId)
+              .then((r) => setQuota(JSON.stringify(r.body, null, 2)))
+              .catch((e: unknown) => setQuota(t('error.generic', { message: e instanceof Error ? e.message : String(e) })))
+          }
+        >
+          {t('credential.quota')}
+        </button>
+      ) : null}
       {message ? <p className="mt-2 text-sm text-[var(--color-muted)]">{message}</p> : null}
+      {quota ? <pre className="mt-2 max-h-60 overflow-auto rounded bg-[var(--color-bg)] p-2 text-xs">{quota}</pre> : null}
     </div>
   );
 }
@@ -109,7 +132,7 @@ export function SettingsPage() {
         <h3 className="font-medium">{t('settings.keys')}</h3>
         <p className="text-sm text-[var(--color-muted)]">{t('settings.keysHint', { dataDir: health?.dataDir ?? '…' })}</p>
         {keys.map((k) => (
-          <KeyCard key={k.provider} status={k} onChange={(s) => setKeys((prev) => prev.map((p) => (p.provider === s.provider ? s : p)))} />
+          <KeyCard key={k.keyId} status={k} onChange={(s) => setKeys((prev) => prev.map((p) => (p.keyId === s.keyId ? s : p)))} />
         ))}
       </section>
       <section className="space-y-3">

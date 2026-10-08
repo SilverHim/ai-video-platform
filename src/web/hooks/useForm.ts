@@ -9,7 +9,8 @@ import { currentForm, useStudio } from '../stores/studio';
 export function useCurrentForm(): { form: FormInput | null; evaluated: EvaluatedForm | null } {
   const modelId = useStudio((s) => s.modelId);
   const drafts = useStudio((s) => s.drafts);
-  const form = useMemo(() => currentForm({ modelId, drafts }), [modelId, drafts]);
+  const credentials = useStudio((s) => s.credentials);
+  const form = useMemo(() => currentForm({ modelId, drafts, credentials }), [modelId, drafts, credentials]);
   const evaluated = useMemo(() => {
     if (!form) return null;
     const found = getModel(form.modelId);
