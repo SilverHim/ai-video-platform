@@ -1,0 +1,129 @@
+name: Agent setup check
+
+# 按 docs/agent-setup.md 原文（逐字提取代码块），在全新的 macOS / Windows 虚拟机上实测「安装 + 启动 + 接入」。
+# 还没有正式 Release 时，安装那一步改用本次刚打的安装包；Claude Code 的配置写到临时目录。手动运行。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run desktop:prepare
+      - run: npx electron-builder --config electron-builder.config.mjs --mac --publish never
+      - run: node scripts/agent-setup-blocks.mjs "$RUNNER_TEMP/blocks" --local-dmg "$(ls "$PWD"/release/*-mac-arm64.dmg)"
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: 第 1 步：检查（应为 arm64、未安装）
+        run: |
+          out=$(bash "$RUNNER_TEMP/blocks/mac-1.sh" 2>&1) || true; echo "$out"
+          echo "$out" | grep -qx arm64
+          if echo "$out" | grep -q INSTALLED; then echo "全新虚拟机上不应已安装"; exit 1; fi
+      - name: 第 2 步：取下载地址（还没有正式 Release 时应输出 NO_RELEASE）
+        run: |
+          out=$(bash "$RUNNER_TEMP/blocks/mac-2.sh" 2>&1) || true; echo "$out"
+          echo "$out" | grep -qE 'NO_RELEASE|INSTALLED'
+      - name: 第 2 步：安装命令（用本次打的 dmg）
+        run: |
+          [ -d "/Applications/AI视频生成平台.app" ] || bash "$RUNNER_TEMP/blocks/mac-2-local.sh"
+          ls -d "/Applications/AI视频生成平台.app"
+      - name: 第 3 步：启动并接入（Claude Code 配置写到临时目录）
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-cfg
+        run: |
+          mkdir -p "$CLAUDE_CONFIG_DIR"
+          out=$(bash "$RUNNER_TEMP/blocks/mac-3.sh" 2>&1) || true; echo "$out" | sed -E 's/[a-f0-9]{64}/<TOKEN>/g'
+          echo "$out" | grep -qx REGISTERED
+          echo "$out" | grep "ai-video" | grep -q Connected
+      - name: 第 3 步：重跑一次（以后轮换令牌就是这样重跑）
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-cfg
+        run: |
+          out=$(bash "$RUNNER_TEMP/blocks/mac-3.sh" 2>&1) || true; echo "$out" | sed -E 's/[a-f0-9]{64}/<TOKEN>/g'
+          echo "$out" | grep "ai-video" | grep -q Connected
+      - name: 服务日志（失败时）
+        if: failure()
+        run: tail -n 60 "$HOME/Library/Application Support/ai-video-platform/logs/server.log" || true
+
+  windows:
+    name: Windows（PowerShell 5.1 与 7）
+    runs-on: windows-2025
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run desktop:prepare
+      - run: npx electron-builder --config electron-builder.config.mjs --win --publish never
+      - run: node scripts/agent-setup-blocks.mjs "$RUNNER_TEMP/blocks"
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: 语法检查（Windows PowerShell 5.1）
+        shell: powershell
+        run: |
+          foreach ($f in Get-ChildItem "$env:RUNNER_TEMP\blocks\win-*.ps1") {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errs)
+            if ($errs) { $errs | ForEach-Object { $_.ToString() }; throw "解析失败：$($f.Name)" }
+          }
+      - name: 语法检查（PowerShell 7）
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem "$env:RUNNER_TEMP\blocks\win-*.ps1") {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errs)
+            if ($errs) { $errs | ForEach-Object { $_.ToString() }; throw "解析失败：$($f.Name)" }
+          }
+      - name: 第 1 步：检查（还没有正式 Release 时应输出 NO_RELEASE）
+        shell: powershell
+        run: |
+          $out = Invoke-Expression ([IO.File]::ReadAllText("$env:RUNNER_TEMP\blocks\win-1.ps1")) | Out-String
+          $out
+          if ($out -notmatch 'NO_RELEASE|INSTALLED') { throw '第 1 步输出不符合预期' }
+      - name: 第 1 步：安装命令（用本次打的安装包）
+        shell: powershell
+        run: |
+          $exe = "$env:LOCALAPPDATA\Programs\ai-video-platform\ai-video-platform.exe"
+          if (-not (Test-Path $exe)) {
+            $setup = (Get-ChildItem release\*-setup.exe | Select-Object -First 1).FullName
+            Start-Process $setup -PassThru | Wait-Process
+          }
+          "InstallLocation: " + (Get-ItemProperty 'HKCU:\Software\cb15f69f-06ac-5950-8842-5800a7696daa' -ErrorAction SilentlyContinue).InstallLocation
+          if (-not (Test-Path $exe)) { throw "安装目录不符：没有 $exe" }
+      - name: 第 2 步：启动并接入（PowerShell 5.1）
+        shell: powershell
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}\claude-cfg-51
+        run: |
+          New-Item -ItemType Directory -Force $env:CLAUDE_CONFIG_DIR | Out-Null
+          $out = Invoke-Expression ([IO.File]::ReadAllText("$env:RUNNER_TEMP\blocks\win-2.ps1")) | Out-String
+          $out -replace '[a-f0-9]{64}', '<TOKEN>'
+          if ($out -notmatch 'REGISTERED' -or $out -notmatch 'Connected') { throw '第 2 步没有接入成功' }
+      - name: 第 2 步：启动并接入（PowerShell 7）
+        shell: pwsh
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}\claude-cfg-7
+        run: |
+          New-Item -ItemType Directory -Force $env:CLAUDE_CONFIG_DIR | Out-Null
+          $out = Invoke-Expression ([IO.File]::ReadAllText("$env:RUNNER_TEMP\blocks\win-2.ps1")) | Out-String
+          $out -replace '[a-f0-9]{64}', '<TOKEN>'
+          if ($out -notmatch 'REGISTERED' -or $out -notmatch 'Connected') { throw '第 2 步没有接入成功' }
+      - name: 服务日志（失败时）
+        if: failure()
+        shell: powershell
+        run: Get-Content "$env:APPDATA\ai-video-platform\logs\server.log" -Tail 60 -ErrorAction SilentlyContinue

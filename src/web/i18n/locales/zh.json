@@ -174,6 +174,9 @@
   "mcp": {
     "title": "MCP 接入（让 agent 操作本平台）",
     "intro": "Claude Code 等支持 HTTP MCP 的 agent 运行下面这条命令即可接入；平台需要保持运行。",
+    "agentIntro": "更省事：直接对 agent 说下面这句话，它会自己读取本机的地址和令牌并完成接入，不用复制令牌。",
+    "agentSentence": "帮我按 {{url}} 安装并接入 AI视频生成平台的 MCP",
+    "copySentence": "复制这句话",
     "url": "地址",
     "copy": "复制接入命令",
     "show": "显示令牌",

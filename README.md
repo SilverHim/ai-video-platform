@@ -26,6 +26,14 @@
 - **桌面版**：macOS（dmg）/ Windows（安装包），双击即用，见 [`docs/desktop.md`](docs/desktop.md)
 - 中英文界面切换
 
+## 让 agent 一句话接入
+
+对 Claude Code 等 agent 说：
+
+> 帮我按 https://raw.githubusercontent.com/SilverHim/ai-video-platform/main/docs/agent-setup.md 安装并接入 AI视频生成平台的 MCP
+
+它会按 [`docs/agent-setup.md`](docs/agent-setup.md) 自己完成：没装桌面版就从 GitHub Releases 下载安装、启动，读取本机的 MCP 地址和令牌，登记到 Claude Code。之后开一个新会话就能让 agent 生成图片和视频。
+
 ## 运行
 
 不想装 Node.js 的话，可以直接下载桌面版（GitHub Releases），第一次打开的放行步骤见 [`docs/desktop.md`](docs/desktop.md)。

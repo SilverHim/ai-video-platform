@@ -131,4 +131,6 @@ export interface EndpointCreatePlan {
 }
 
 /** ModelArk 控制台「在线推理」页（官方文档 create-standard-inference-endpoint 给出的链接） */
+/** 写给 agent 的接入说明（用户对 agent 说一句话即可安装并接入 MCP） */
+export const AGENT_SETUP_URL = 'https://raw.githubusercontent.com/SilverHim/ai-video-platform/main/docs/agent-setup.md';
 export const ARK_CONSOLE_ENDPOINTS_URL = 'https://ai.byteplus.com/ark/region:ap-southeast-1/endpoint?config=%7B%7D';

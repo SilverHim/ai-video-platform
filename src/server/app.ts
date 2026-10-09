@@ -71,6 +71,8 @@ export function createApp(deps: AppDeps) {
   app.route('/api', libraryRoutes(deps));
   app.route('/api', endpointRoutes(deps));
   const mcpToken = new McpTokenStore(deps.config.paths.mcpToken);
+  // 启动时就生成令牌文件：agent 按 docs/agent-setup.md 接入时，全新安装也能直接读到
+  mcpToken.get();
   app.get('/api/mcp', (c) => {
     const url = `http://127.0.0.1:${deps.getPort()}/mcp`;
     const token = mcpToken.get();

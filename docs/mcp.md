@@ -4,6 +4,12 @@
 
 ## 接入
 
+**最省事**：对 agent 说一句话，它会自己读取本机的地址和令牌并完成登记（没装桌面版还会先下载安装），步骤见 [`agent-setup.md`](agent-setup.md)：
+
+> 帮我按 https://raw.githubusercontent.com/SilverHim/ai-video-platform/main/docs/agent-setup.md 安装并接入 AI视频生成平台的 MCP
+
+**手动接入**：
+
 1. 启动平台：`npm start`（或开发时 `npm run dev`），保持运行。
 2. 打开网页「设置 → MCP 接入」，复制接入命令，在终端运行，形如：
 

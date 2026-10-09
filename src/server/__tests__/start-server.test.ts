@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { startServer, type RunningServer } from '../index.js';
@@ -20,6 +21,8 @@ describe('startServer', () => {
     const res = await fetch(`${s.url}/api/health`, { headers: { 'x-ark-client': 'web' } });
     expect(res.status).toBe(200);
     expect(await json(res)).toMatchObject({ ok: true, dataDir: s.config.dataDir });
+    // 令牌文件在启动时就生成（agent 接入说明依赖它）
+    expect(existsSync(s.config.paths.mcpToken)).toBe(true);
   });
 
   it('端口被占用时向后尝试', async () => {
