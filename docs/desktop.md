@@ -8,8 +8,8 @@
 
 | 系统 | 文件 |
 |---|---|
-| macOS（Apple 芯片；不支持 Intel Mac） | `ai-video-platform-<版本>-mac-arm64.dmg` |
-| Windows 10/11（x64） | `ai-video-platform-<版本>-win-x64-setup.exe` |
+| macOS（Apple 芯片；不支持 Intel Mac） | `ai-video-platform-mac-arm64.dmg` |
+| Windows 10/11（x64） | `ai-video-platform-win-x64-setup.exe` |
 
 安装包没有付费签名（Apple Developer ID / Windows 代码签名证书），第一次打开要手动放行：
 

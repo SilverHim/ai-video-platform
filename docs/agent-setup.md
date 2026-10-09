@@ -42,14 +42,11 @@ true
 
 ```bash
 (
-API=$(curl -sS -m 30 -w '\n%{http_code}' https://api.github.com/repos/SilverHim/ai-video-platform/releases/latest) || { echo NETWORK_ERROR; exit 1; }
-CODE=$(printf '%s' "$API" | tail -n 1)
-[ "$CODE" = 404 ] && { echo NO_RELEASE; exit 0; }
-[ "$CODE" = 200 ] || { echo "GITHUB_HTTP_$CODE"; exit 1; }
-URL=$(printf '%s' "$API" | grep -o '"browser_download_url": *"[^"]*mac-arm64\.dmg"' | sed -E 's/.*"(https[^"]+)"/\1/' | head -n 1)
-[ -n "$URL" ] || { echo NO_MAC_ASSET; exit 1; }
+URL=https://github.com/SilverHim/ai-video-platform/releases/latest/download/ai-video-platform-mac-arm64.dmg
 TMP=$(mktemp -d); DMG="$TMP/ai-video-platform.dmg"; MNT="$TMP/mnt"; mkdir "$MNT"
-curl -fL --retry 2 -o "$DMG" "$URL" || { echo DOWNLOAD_FAILED; rm -rf "$TMP"; exit 1; }
+CODE=$(curl -sSL --retry 2 -o "$DMG" -w '%{http_code}' "$URL") || { echo "DOWNLOAD_FAILED $CODE"; rm -rf "$TMP"; exit 1; }
+[ "$CODE" = 404 ] && { echo NO_RELEASE; rm -rf "$TMP"; exit 0; }
+[ "$CODE" = 200 ] || { echo "DOWNLOAD_FAILED HTTP_$CODE"; rm -rf "$TMP"; exit 1; }
 hdiutil attach -nobrowse -quiet -mountpoint "$MNT" "$DMG" || { echo MOUNT_FAILED; rm -rf "$TMP"; exit 1; }
 DEST=/Applications; [ -w "$DEST" ] || { DEST="$HOME/Applications"; mkdir -p "$DEST"; }
 ditto "$MNT/AI视频生成平台.app" "$DEST/AI视频生成平台.app"; RC=$?
@@ -109,12 +106,10 @@ claude mcp list 2>&1 | grep "ai-video"
   $loc = (Get-ItemProperty $key -ErrorAction SilentlyContinue).InstallLocation
   if ($loc) { $exe = Join-Path $loc 'ai-video-platform.exe' }
   if ((Get-Process ai-video-platform -ErrorAction SilentlyContinue) -or (Test-Path $exe)) { "INSTALLED $exe"; return }
-  try { $rel = Invoke-RestMethod -UseBasicParsing -TimeoutSec 30 'https://api.github.com/repos/SilverHim/ai-video-platform/releases/latest' }
-  catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { 'NO_RELEASE' } else { "GITHUB_ERROR $($_.Exception.Message)" }; return }
-  $asset = $rel.assets | Where-Object { $_.name -like '*win-x64-setup.exe' } | Select-Object -First 1
-  if (-not $asset) { 'NO_WINDOWS_ASSET'; return }
-  $setup = Join-Path $env:TEMP $asset.name
-  try { Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile $setup } catch { "DOWNLOAD_FAILED $($_.Exception.Message)"; return }
+  $url = 'https://github.com/SilverHim/ai-video-platform/releases/latest/download/ai-video-platform-win-x64-setup.exe'
+  $setup = Join-Path $env:TEMP 'ai-video-platform-win-x64-setup.exe'
+  try { Invoke-WebRequest -UseBasicParsing $url -OutFile $setup }
+  catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { 'NO_RELEASE' } else { "DOWNLOAD_FAILED $($_.Exception.Message)" }; return }
   # 只等安装程序本身结束（它装完会自动打开应用）；不要用 Start-Process -Wait，那会一直等到应用退出
   Start-Process $setup -PassThru | Wait-Process
   $loc = (Get-ItemProperty $key -ErrorAction SilentlyContinue).InstallLocation
@@ -168,9 +163,8 @@ claude mcp list 2>&1 | grep "ai-video"
 | `REGISTERED` | 成功，按「完成后告诉用户」收尾 |
 | `RUNNING` / `INSTALLED …` | 已安装，进入「启动并接入」那一步 |
 | `NO_RELEASE` | 仓库还没有正式发布桌面版：告诉用户先在 GitHub 上发布 Release（或从源码运行），然后停止 |
-| `NO_MAC_ASSET` / `NO_WINDOWS_ASSET` | 最新 Release 里没有对应的安装包：告诉用户，然后停止 |
-| `NETWORK_ERROR` / `GITHUB_HTTP_403` / `GITHUB_ERROR …` | 网络问题或 GitHub 限流（匿名每小时 60 次）：稍后重试一次，仍失败就告诉用户 |
-| `DOWNLOAD_FAILED` / `MOUNT_FAILED` / `COPY_FAILED` / `INSTALL_FAILED` | 安装失败：把输出告诉用户；macOS 上也可以请用户手动把 dmg 里的应用拖进「应用程序」 |
+| `DOWNLOAD_FAILED …` | 下载失败（网络问题）：稍后重试一次，仍失败就把输出告诉用户 |
+| `MOUNT_FAILED` / `COPY_FAILED` / `INSTALL_FAILED` | 安装失败：把输出告诉用户；macOS 上也可以请用户手动把 dmg 里的应用拖进「应用程序」 |
 | `NOT_INSTALLED` / `LAUNCH_FAILED` | 没找到已安装的应用：回到第 1 步 |
 | `NOT_READY` | 服务 90 秒内没有就绪：把输出的日志末尾给用户看。常见原因：应用被系统拦截（macOS 请用户到「隐私与安全性」点「仍要打开」；Windows 点「仍要运行」） |
 | `MCP_INFO_FAILED` / `MCP_INFO_INVALID` / `REGISTER_FAILED` | 把输出告诉用户 |

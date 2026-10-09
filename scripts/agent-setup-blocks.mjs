@@ -18,10 +18,9 @@ if (bash.length !== 3 || ps.length !== 2) throw new Error(`代码块数量不对
 bash.forEach((b, i) => writeFileSync(join(out, `mac-${i + 1}.sh`), b));
 if (localDmg) {
   const step2 = bash[1];
-  const from = step2.indexOf('TMP=$(mktemp -d)');
-  const download = 'curl -fL --retry 2 -o "$DMG" "$URL"';
-  if (from < 0 || !step2.includes(download)) throw new Error('第 2 步的安装命令和预期不一致，请同步更新本脚本');
-  writeFileSync(join(out, 'mac-2-local.sh'), `(\n${step2.slice(from).replace(download, `cp ${JSON.stringify(localDmg)} "$DMG"`)}`);
+  const download = `CODE=$(curl -sSL --retry 2 -o "$DMG" -w '%{http_code}' "$URL")`;
+  if (!step2.includes(download)) throw new Error('第 2 步的下载命令和预期不一致，请同步更新本脚本');
+  writeFileSync(join(out, 'mac-2-local.sh'), step2.replace(download, `CODE=$(cp ${JSON.stringify(localDmg)} "$DMG" && echo 200)`));
 }
 // PowerShell 5.1 读无 BOM 的 .ps1 会按系统代码页解析，中文会乱：写 UTF-8 BOM
 ps.forEach((b, i) => writeFileSync(join(out, `win-${i + 1}.ps1`), `\uFEFF${b}`));

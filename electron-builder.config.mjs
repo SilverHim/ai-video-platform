@@ -14,8 +14,9 @@ export default {
   // 应用目录不带依赖（服务端已打成单文件）：返回 false 表示依赖由外部处理，
   // 不重建原生模块，也不去项目根目录收集 node_modules
   beforeBuild: async () => false,
-  // 文件名用 ASCII：GitHub 会改写非 ASCII 的附件名
-  artifactName: '${name}-${version}-${os}-${arch}.${ext}',
+  // 文件名用 ASCII（GitHub 会改写非 ASCII 的附件名），且不带版本号：
+  // docs/agent-setup.md 直接从 releases/latest/download/<文件名> 下载，不用调 GitHub API（匿名每小时 60 次）
+  artifactName: '${name}-${os}-${arch}.${ext}',
   mac: {
     // 只出 Apple 芯片版，不支持 Intel Mac
     target: [{ target: 'dmg', arch: ['arm64'] }],
@@ -33,6 +34,6 @@ export default {
     // 按用户安装，不需要管理员权限
     oneClick: true,
     perMachine: false,
-    artifactName: '${name}-${version}-win-${arch}-setup.${ext}',
+    artifactName: '${name}-win-${arch}-setup.${ext}',
   },
 };
