@@ -11,7 +11,7 @@
 ## 约定（agent 必须遵守）
 
 - 开始前用一两句话告诉用户你要做什么：可能要下载并安装桌面版（来自 GitHub Releases），以及修改 Claude Code 的用户级配置（`~/.claude.json`）。
-- **每个代码块作为一条命令完整执行**（不要拆开）：每次执行命令都是新的 shell，前一条命令里的变量不会保留。代码块都包在 `( … )` / `& { … }` 里，可以安全地整段运行。
+- **每个代码块作为一条命令完整执行**（不要拆开）：每次执行命令都是新的 shell，前一条命令里的变量不会保留。代码块都包在 `( … )` / `& { … }` 里，可以安全地整段运行；不要另加 `set -e` 或把 `$ErrorActionPreference` 设为 `Stop`。
 - 下载和等待服务就绪可能要一两分钟：执行时把命令超时设长一些（例如 5 分钟）。
 - **不要在对话里输出令牌**。不要运行 `claude mcp get ai-video`（它会明文打印令牌）。
 - 已经装好、正在运行的桌面版不要重装，也不要退出它。
@@ -67,7 +67,11 @@ rm -rf "$TMP"
 ```bash
 (
 D="$HOME/Library/Application Support/ai-video-platform"
-pgrep -x "AI视频生成平台" >/dev/null || open -a "AI视频生成平台" || { echo LAUNCH_FAILED; exit 1; }
+APP=; for a in "/Applications/AI视频生成平台.app" "$HOME/Applications/AI视频生成平台.app"; do [ -d "$a" ] && { APP="$a"; break; }; done
+if ! pgrep -x "AI视频生成平台" >/dev/null; then
+  [ -n "$APP" ] || { echo NOT_INSTALLED; exit 1; }
+  open "$APP" || { echo LAUNCH_FAILED; exit 1; }
+fi
 READY=; PORT=
 for i in $(seq 1 90); do
   PORT=$(sed -nE 's/.*"port"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$D/desktop-state.json" 2>/dev/null | head -n 1)
@@ -98,7 +102,7 @@ claude mcp list 2>&1 | grep "ai-video"
 
 ```powershell
 & {
-  $ProgressPreference = 'SilentlyContinue'
+  $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { 'NO_CLAUDE_CLI'; return }
   $key = 'HKCU:\Software\cb15f69f-06ac-5950-8842-5800a7696daa'
   $exe = "$env:LOCALAPPDATA\Programs\ai-video-platform\ai-video-platform.exe"
@@ -125,6 +129,7 @@ claude mcp list 2>&1 | grep "ai-video"
 
 ```powershell
 & {
+  $ErrorActionPreference = 'Continue'
   $D = "$env:APPDATA\ai-video-platform"
   $exe = "$env:LOCALAPPDATA\Programs\ai-video-platform\ai-video-platform.exe"
   $loc = (Get-ItemProperty 'HKCU:\Software\cb15f69f-06ac-5950-8842-5800a7696daa' -ErrorAction SilentlyContinue).InstallLocation
