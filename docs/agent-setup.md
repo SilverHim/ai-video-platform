@@ -93,23 +93,25 @@ claude mcp list 2>&1 | grep "ai-video"
 
 ## Windows（x64）
 
-以下代码块在 PowerShell 里执行。（Windows 流程按安装包的配置写成，尚未在 Windows 实机上逐步验证；遇到和描述不一致的地方，如实告诉用户。）
+以下代码块在 PowerShell 里执行（Windows PowerShell 5.1 或 PowerShell 7 都可以；下载用系统自带的 `curl.exe`，Windows 10 1803 及以后都有）。（Windows 流程按安装包的配置写成，尚未在 Windows 实机上逐步验证；遇到和描述不一致的地方，如实告诉用户。）
 
 ### 第 1 步：检查并在需要时安装
 
 ```powershell
 & {
-  $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'
+  $ErrorActionPreference = 'Continue'
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { 'NO_CLAUDE_CLI'; return }
   $key = 'HKCU:\Software\cb15f69f-06ac-5950-8842-5800a7696daa'
   $exe = "$env:LOCALAPPDATA\Programs\ai-video-platform\ai-video-platform.exe"
   $loc = (Get-ItemProperty $key -ErrorAction SilentlyContinue).InstallLocation
   if ($loc) { $exe = Join-Path $loc 'ai-video-platform.exe' }
   if ((Get-Process ai-video-platform -ErrorAction SilentlyContinue) -or (Test-Path $exe)) { "INSTALLED $exe"; return }
+  # 用系统自带的 curl.exe 下载（Windows PowerShell 5.1 的 Invoke-WebRequest 访问 GitHub 下载地址可能被断开连接）
   $url = 'https://github.com/SilverHim/ai-video-platform/releases/latest/download/ai-video-platform-win-x64-setup.exe'
   $setup = Join-Path $env:TEMP 'ai-video-platform-win-x64-setup.exe'
-  try { Invoke-WebRequest -UseBasicParsing $url -OutFile $setup }
-  catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { 'NO_RELEASE' } else { "DOWNLOAD_FAILED $($_.Exception.Message)" }; return }
+  $code = curl.exe -sSL --retry 2 -o $setup -w '%{http_code}' $url
+  if ($code -eq '404') { 'NO_RELEASE'; return }
+  if ($code -ne '200') { "DOWNLOAD_FAILED HTTP_$code"; return }
   # 只等安装程序本身结束（它装完会自动打开应用）；不要用 Start-Process -Wait，那会一直等到应用退出
   Start-Process $setup -PassThru | Wait-Process
   $loc = (Get-ItemProperty $key -ErrorAction SilentlyContinue).InstallLocation
