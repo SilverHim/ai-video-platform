@@ -93,7 +93,7 @@ claude mcp list 2>&1 | grep "ai-video"
 
 ## Windows（x64）
 
-以下代码块在 PowerShell 里执行（Windows PowerShell 5.1 或 PowerShell 7 都可以；下载用系统自带的 `curl.exe`，Windows 10 1803 及以后都有）。（Windows 流程按安装包的配置写成，尚未在 Windows 实机上逐步验证；遇到和描述不一致的地方，如实告诉用户。）
+以下代码块在 PowerShell 里执行（Windows PowerShell 5.1 或 PowerShell 7 都可以；下载用系统自带的 `curl.exe`，Windows 10 1803 及以后都有）。（已在 GitHub 的 Windows Server 2025 虚拟机上按原文实测安装与接入；家用 Windows 11 上的 SmartScreen 等弹窗没有实测，遇到和描述不一致的地方，如实告诉用户。）
 
 ### 第 1 步：检查并在需要时安装
 
