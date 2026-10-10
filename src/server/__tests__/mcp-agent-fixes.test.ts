@@ -79,7 +79,8 @@ describe('MCP：agent 实测问题', () => {
     const r = await call(s, 'generate_image', { model_id: PRO, prompt: 'a red fox' });
     expect(r.data.status).toBe('succeeded');
     expect(r.data.next).toBeUndefined();
-    expect(r.content.some((c) => c.type === 'image')).toBe(true);
+    // 有 ffmpeg 时附缩略图；没有（例如 CI）时附一句提示：两种都说明走的是「完成即返回结果」
+    expect(r.content.some((c) => c.type === 'image' || (c.type === 'text' && String(c.text).includes('ffmpeg')))).toBe(true);
   });
 
   it('B1：设置页的接入命令用 add-json 并带 10 分钟超时', async () => {

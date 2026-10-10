@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createServer, type AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mcpConnectCommand } from '../app.js';
@@ -45,6 +46,21 @@ describe('数据目录实例锁', () => {
     const again = await startServer({ dataDir: tmp.dir, port: 0, version: 't' });
     await again.close();
   });
+
+  it('启动中途失败（端口被占用）也会释放锁，同一目录可以马上重新启动', async () => {
+    const tmp = tempDir();
+    cleanup = tmp.cleanup;
+    const blocker = createServer();
+    await new Promise<void>((r) => blocker.listen(0, '127.0.0.1', r));
+    const busy = (blocker.address() as AddressInfo).port;
+    try {
+      await expect(startServer({ dataDir: tmp.dir, port: busy, dev: true, version: 't' })).rejects.toMatchObject({ code: 'EADDRINUSE' });
+    } finally {
+      await new Promise<void>((r) => blocker.close(() => r()));
+    }
+    const ok = await startServer({ dataDir: tmp.dir, port: 0, version: 't' });
+    await ok.close();
+  });
 });
 
 describe('设置页接入命令', () => {
@@ -61,6 +77,11 @@ describe('设置页接入命令', () => {
     expect(cmd.startsWith("& { $PSNativeCommandArgumentPassing = 'Legacy'; ")).toBe(true);
     expect(cmd).toContain('claude mcp remove ai-video --scope user 2>$null | Out-Null');
     expect(cmd).toContain(`claude mcp add-json --scope user ai-video ('{"type":"http","url":"${url}"`);
+    // 参数里不能有空格（Legacy 传参会切开）：Bearer 后的空格写成 JSON 转义
+    expect(cmd).toContain(`"Authorization":"Bearer\\u0020${token}"`);
     expect(cmd.endsWith(`' -replace '"', '\\"') }`)).toBe(true);
+    const json = /\('(\{.*\})' -replace/.exec(cmd)![1]!;
+    expect(json).not.toContain(' ');
+    expect(JSON.parse(json)).toEqual({ type: 'http', url, headers: { Authorization: `Bearer ${token}` }, timeout: 600000 });
   });
 });

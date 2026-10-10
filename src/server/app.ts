@@ -36,9 +36,11 @@ export const MCP_CLIENT_TIMEOUT_MS = 600_000;
 export function mcpConnectCommand(url: string, token: string, platform: NodeJS.Platform = process.platform): string {
   const entry = JSON.stringify({ type: 'http', url, headers: { Authorization: `Bearer ${token}` }, timeout: MCP_CLIENT_TIMEOUT_MS });
   if (platform === 'win32') {
-    // 在脚本块里统一按 Legacy 方式给命令行程序传参并转义 JSON 的双引号：5.1 默认如此，
-    // 7.3+ 对 .cmd / .bat 启动器也会回到 Legacy；只影响这个脚本块，不改用户会话
-    return `& { $PSNativeCommandArgumentPassing = 'Legacy'; claude mcp remove ai-video --scope user 2>$null | Out-Null; claude mcp add-json --scope user ai-video ('${entry}' -replace '"', '\\"') }`;
+    // 在脚本块里统一按 Legacy 方式给命令行程序传参（5.1 只有这种方式；7.x 默认方式对 .cmd / .bat 启动器也会回到 Legacy；
+    // 只影响这个脚本块）。Legacy 下参数含空格会被切开，所以 JSON 里的空格写成 \u0020（解析后还原），再把 " 转义成 \"。
+    // 已在 GitHub 的 Windows 虚拟机上用 PowerShell 5.1 与 7 实测（含 npm 的 claude.ps1 垫片）
+    const noSpace = entry.replace(/ /g, '\\u0020');
+    return `& { $PSNativeCommandArgumentPassing = 'Legacy'; claude mcp remove ai-video --scope user 2>$null | Out-Null; claude mcp add-json --scope user ai-video ('${noSpace}' -replace '"', '\\"') }`;
   }
   return `claude mcp remove ai-video --scope user 2>/dev/null; claude mcp add-json --scope user ai-video '${entry}'`;
 }

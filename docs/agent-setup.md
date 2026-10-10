@@ -147,9 +147,10 @@ claude mcp list 2>&1 | grep "ai-video"
   $info = Invoke-RestMethod -UseBasicParsing -TimeoutSec 5 "http://127.0.0.1:$port/api/mcp" -Headers @{ 'x-ark-client' = 'web' }
   if (-not $info.url -or $info.token -notmatch '^[a-f0-9]{64}$') { 'MCP_INFO_INVALID'; return }
   $json = [ordered]@{ type = 'http'; url = $info.url; headers = @{ Authorization = "Bearer $($info.token)" }; timeout = 600000 } | ConvertTo-Json -Compress
-  # 统一按 Legacy 方式给命令行程序传参并转义双引号：5.1 默认如此，7.3+ 对 .cmd / .bat 启动器也会回到 Legacy（只影响本脚本块）
+  # 统一按 Legacy 方式给命令行程序传参（5.1 只有这种方式；7.x 默认方式对 .cmd / .bat 启动器也会回到 Legacy；只影响本脚本块）。
+  # Legacy 下参数含空格会被切开：把 JSON 里的空格写成 \u0020（Claude Code 解析 JSON 时还原成空格），再把 " 转义成 \"
   $PSNativeCommandArgumentPassing = 'Legacy'
-  $json = $json -replace '"', '\"'
+  $json = ($json -replace ' ', '\u0020') -replace '"', '\"'
   claude mcp remove ai-video --scope user 2>$null | Out-Null
   claude mcp add-json --scope user ai-video $json | Out-Null
   if ($LASTEXITCODE -ne 0) { 'REGISTER_FAILED'; return }
