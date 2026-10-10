@@ -24,6 +24,7 @@ export function securityHeaders(): MiddlewareHandler {
     h.set('X-Frame-Options', 'DENY');
     h.set('Cross-Origin-Resource-Policy', 'same-origin');
     h.set('Cross-Origin-Opener-Policy', 'same-origin');
-    if ((h.get('content-type') ?? '').includes('text/html')) h.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+    // 路由自己设了更严的 CSP（如素材内容的沙箱）时保留
+    if ((h.get('content-type') ?? '').includes('text/html') && !h.has('Content-Security-Policy')) h.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
   };
 }

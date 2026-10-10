@@ -5,6 +5,12 @@ import { AssetTooLargeError } from '../assets/asset-store.js';
 import { sendFile } from '../http/send-file.js';
 import type { AppDeps } from '../app.js';
 
+/**
+ * 素材内容不要求 X-Ark-Client（见 local-guard），也就能在地址栏直接打开；素材是用户上传的任意文件（可能是 HTML/SVG），
+ * 所以加沙箱 CSP：直接打开时不执行其中的脚本，<img>/<video> 加载不受影响
+ */
+const ASSET_CONTENT_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
 export function assetRoutes(deps: AppDeps) {
   const app = new Hono();
 
@@ -34,7 +40,9 @@ export function assetRoutes(deps: AppDeps) {
   app.get('/:id/content', async (c) => {
     const asset = deps.store.getAsset(c.req.param('id'));
     if (!asset) return c.json({ error: { code: 'not_found', message: '素材不存在' } }, 404);
-    return sendFile(c.req.raw, deps.services.assets.absPath(asset), { cacheControl: 'private, max-age=31536000, immutable' });
+    const res = await sendFile(c.req.raw, deps.services.assets.absPath(asset), { cacheControl: 'private, max-age=31536000, immutable' });
+    res.headers.set('Content-Security-Policy', ASSET_CONTENT_CSP);
+    return res;
   });
 
   return app;

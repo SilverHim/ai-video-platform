@@ -219,6 +219,7 @@ wireGuards           → 对最终 JSON 的最后一道检查（例如 2.5 首�
   - Host 必须是 `127.0.0.1` 或 `localhost` 加端口，防 DNS 重绑定。
   - Origin 必须同源（`/mcp` 也一样，非法时返回 403）。
   - `/api/*` 要求 `Sec-Fetch-Site` 为 same-origin 或 none，并且必须带 `X-Ark-Client` 头。
+    例外：`GET/HEAD /api/assets/:id/content` 不要求 `X-Ark-Client`（网页用 `<img>` 直接加载素材，带不了自定义头），其余检查同上，与 `/files/*` 同等防护；响应带沙箱 CSP，直接打开时不执行其中的脚本。
   - `/mcp` 要求 `Authorization: Bearer <mcp-token>`：32 字节随机数，存在 `<dataDir>/mcp-token`，设置页可以轮换。
 - **转发请求头从零构建**：不转发 Origin、Referer、Cookie。上游 base URL 只能从白名单 id 解析出来，防 SSRF。
 - **超时**（undici 默认 300s 不够用，需自定义 Agent）
