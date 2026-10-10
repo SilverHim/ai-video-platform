@@ -12,6 +12,9 @@ export const draftOn = (p: SeedanceProfile, c: PredCtx): boolean => p.draft && c
 
 const RATIOS = ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'];
 
+/** 2.0 / 2.0 fast / 2.0 mini（2.0 提示词指南的建议只挂到这几个模型上） */
+const isV20 = (p: SeedanceProfile): boolean => p.v2 && p.key !== 'v25';
+
 function resolutionField(p: SeedanceProfile): FieldDef {
   const badge = (v: string): I18nText | null => {
     if (p.key === 'v25' && v === '1080p') return T('10-bit HEVC，浏览器可能放不了', '10-bit HEVC; browsers may not play it');
@@ -38,6 +41,10 @@ function resolutionField(p: SeedanceProfile): FieldDef {
   };
 }
 
+const RATIO_HELP = T('adaptive：文生 / 参考生视频由模型选比例，首帧任务跟随首帧图，编辑 / 延长跟随原视频；返回的实际比例可能不在枚举内', 'adaptive: the model picks for text / reference, follows the first frame for image-to-video and the source for edit / extend; the returned ratio may be outside the list');
+/** 2.0 提示词指南 FAQ：竖屏更容易出现意外字幕 */
+const PORTRAIT_TIP = T('竖屏比横屏更容易出现意外字幕，业务允许时可先横屏生成再裁成竖屏', 'Portrait output gets unwanted subtitles more often than landscape, so generate landscape and crop when you can');
+
 function ratioField(p: SeedanceProfile): FieldDef {
   const adaptive: EnumOption = {
     value: 'adaptive',
@@ -49,7 +56,7 @@ function ratioField(p: SeedanceProfile): FieldDef {
     key: 'ratio',
     type: 'enum',
     label: T('画面比例', 'Aspect ratio'),
-    help: T('adaptive：文生 / 参考生视频由模型选比例，首帧任务跟随首帧图，编辑 / 延长跟随原视频；返回的实际比例可能不在枚举内', 'adaptive: the model picks for text / reference, follows the first frame for image-to-video and the source for edit / extend; the returned ratio may be outside the list'),
+    help: isV20(p) ? T(`${RATIO_HELP.zh}。${PORTRAIT_TIP.zh}`, `${RATIO_HELP.en}. ${PORTRAIT_TIP.en}`) : RATIO_HELP,
     group: 'basic',
     modes: userModesOf(p),
     wire: 'ratio',
@@ -128,7 +135,11 @@ function generateAudioField(p: SeedanceProfile): FieldDef {
     key: 'generate_audio',
     type: 'bool',
     label: T('生成音频', 'Generate audio'),
-    help: T('输出的音频为单声道', 'Generated audio is mono'),
+    help:
+      p.key === 'v15pro'
+        ? // 1.5 pro 提示词指南：背景音乐默认按提示词自动生成，对白、旁白、音效、BGM 都靠提示词控制
+          T('输出的音频为单声道；默认会按提示词自动配背景音乐，对白、旁白、音效和 BGM 都靠提示词描述来控制', 'Generated audio is mono; background music is added from the prompt by default, and dialogue, voiceover, sound effects and BGM are all steered by the prompt')
+        : T('输出的音频为单声道', 'Generated audio is mono'),
     group: 'basic',
     modes: userModesOf(p),
     wire: 'generate_audio',
@@ -185,12 +196,15 @@ function cameraFixedField(p: SeedanceProfile): FieldDef {
   };
 }
 
-function watermarkField(): FieldDef {
+function watermarkField(p: SeedanceProfile): FieldDef {
   return {
     key: 'watermark',
     type: 'bool',
     label: T('水印', 'Watermark'),
-    help: T('开启时右下角加 "AI Generated" 水印', 'Adds an "AI Generated" mark at the bottom-right'),
+    help: isV20(p)
+      ? // 2.0 提示词指南 FAQ：模型可能自己画出其他平台的 Logo / 水印
+        T('开启时右下角加 "AI Generated" 水印。关闭它不能阻止模型自己画出其他平台的 Logo / 水印，需要时在提示词里写 do not generate watermarks / logos', 'Adds an "AI Generated" mark at the bottom-right. Turning it off does not stop the model from drawing other platforms\' logos / watermarks; add "do not generate watermarks / logos" to the prompt when needed')
+      : T('开启时右下角加 "AI Generated" 水印', 'Adds an "AI Generated" mark at the bottom-right'),
     group: 'output',
     // API 的 watermark 段没列适用模型；"Parameter input methods" 写明 watermark 等 7 个参数所有模型都可在请求体里传
     wire: 'watermark',
@@ -214,12 +228,12 @@ function outputFormatField(): FieldDef {
       {
         value: 'mov',
         label: T('MOV', 'MOV'),
-        badge: T('文档冲突：教程能力矩阵只写 MP4；H.264 4:4:4 + PCM，部分播放器放不了', 'Docs disagree: the tutorial matrix lists MP4 only; H.264 4:4:4 + PCM, some players cannot play it'),
+        badge: T('H.264 4:4:4 + PCM，部分播放器放不了（可用 VLC / mpv / IINA）', 'H.264 4:4:4 + PCM; some players cannot play it (VLC / mpv / IINA can)'),
       },
     ],
-    docs: [API, doc(DOC_URLS.s25)],
-    // 文档冲突：教程能力矩阵里 2.5 只写 MP4，S25 / API / 模型列表写 mp4 / mov（S25 样片示例两步、编辑 / 延长示例都用了 mov，作旁证）
-    experimental: true,
+    // 教程能力矩阵（rev 298）仍只写 MP4；S25（Output format 一节）、API、模型列表、2.5 提示词指南都写支持 mov，指南还建议编辑 / 延长用 mov。
+    // 用户决定按后四处处理，不再标实验
+    docs: [API, doc(DOC_URLS.s25), doc(DOC_URLS.guide25)],
   };
 }
 
@@ -317,7 +331,7 @@ export function buildFields(p: SeedanceProfile): FieldDef[] {
     ...(p.draft ? [draftField(p)] : []),
     // 文档冲突：2.x 是否接受 seed 未明确（API 只列 1.x，S25 正片规则又提到 seed），2.x 不暴露
     ...(p.seedCamera ? [seedField(p), cameraFixedField(p)] : []),
-    watermarkField(),
+    watermarkField(p),
     ...(p.outputFormat ? [outputFormatField()] : []),
     returnLastFrameField(p),
     serviceTierField(p),

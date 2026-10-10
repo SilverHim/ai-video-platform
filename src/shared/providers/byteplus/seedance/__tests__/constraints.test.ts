@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FormInput } from '../../../../catalog/types.js';
-import { OFFICIAL_LEGACY_FLAGS } from '../__fixtures__/responses.js';
+import { GUIDE_10_LEGACY_FLAGS, GUIDE_15_LEGACY_FLAGS, OFFICIAL_LEGACY_FLAGS } from '../__fixtures__/responses.js';
 import { ALL, V10, V10F, V15, V20, V20F, V20M, V20S, V25, aud, draftFrom, evalForm, guardIds, img, issueIds, model, vid } from './helpers.js';
 
 const DAY = 24 * 3600_000;
@@ -16,10 +16,10 @@ const OMNI = ['C-SE-7-empty', 'C-SE-7-video-total', 'C-SE-7-audio-total', 'C-SE-
 const FINAL = ['C-SE-6-source', 'C-SE-6-ttl', 'C-SE-6-model', 'C-SE-6-prompt'];
 const DECLARED: [string, string[], string[]][] = [
   [V25, [...PROMPT, 'C-SE-8-boundary', 'C-SE-8-heic', ...OMNI, 'C-SE-3', 'C-SE-4', 'C-SE-2-auto', 'C-SE-2-clip', ...FINAL, 'C-SE-5-input'], ['content-resolved', 'role-exclusive', 'capability', 'C-SE-7', 'C-SE-2', 'C-SE-3', 'C-SE-5', 'C-SE-6', 'C-SE-13']],
-  ...V20S.map((id): [string, string[], string[]] => [id, [...PROMPT, 'C-SE-16-zh', 'C-SE-8-boundary', ...OMNI, 'C-SE-7-audio-only', 'C-SE-20-auto'], ['content-resolved', 'role-exclusive', 'capability', 'C-SE-7', 'C-SE-13']]),
-  [V15, [...PROMPT, 'C-SE-16-zh', 'C-SE-8-boundary', ...FINAL], ['content-resolved', 'role-exclusive', 'capability', 'C-SE-5', 'C-SE-6', 'C-SE-13']],
-  [V10, [...PROMPT, 'C-SE-16-zh', 'C-SE-8-boundary'], ['content-resolved', 'role-exclusive', 'capability', 'C-SE-13']],
-  [V10F, [...PROMPT, 'C-SE-16-zh', 'C-SE-8-boundary'], ['content-resolved', 'role-exclusive', 'capability', 'C-SE-13']],
+  ...V20S.map((id): [string, string[], string[]] => [id, [...PROMPT, 'C-SE-8-boundary', ...OMNI, 'C-SE-7-audio-only', 'C-SE-20-ref', 'C-SE-20-auto'], ['content-resolved', 'role-exclusive', 'capability', 'C-SE-7', 'C-SE-13']]),
+  [V15, [...PROMPT, 'C-SE-8-boundary', ...FINAL], ['content-resolved', 'role-exclusive', 'capability', 'C-SE-5', 'C-SE-6', 'C-SE-13']],
+  [V10, [...PROMPT, 'C-SE-8-boundary'], ['content-resolved', 'role-exclusive', 'capability', 'C-SE-13']],
+  [V10F, [...PROMPT, 'C-SE-8-boundary'], ['content-resolved', 'role-exclusive', 'capability', 'C-SE-13']],
 ];
 
 describe('每个模型声明的约束与 guard', () => {
@@ -30,10 +30,27 @@ describe('每个模型声明的约束与 guard', () => {
 });
 
 describe('提示词 lint（C-SE-16）', () => {
-  it.each(ALL)('%s：官方示例的 --rs / --rt / --dur / --seed / --cf / --wm 旧写法给 warn', (id) => {
+  it.each(ALL)('%s：官方示例的 --rs / --rt / --dur / --seed / --cf / --wm 旧写法和指南示例的全称写法都给 warn', (id) => {
     expect(issue(id, { prompt: `a cat ${OFFICIAL_LEGACY_FLAGS}` }, 'C-SE-16-legacy')?.severity).toBe('warn');
+    for (const flags of [GUIDE_10_LEGACY_FLAGS, GUIDE_15_LEGACY_FLAGS, '--camerafixed true', '--watermark=false']) expect(ids(id, { prompt: `a cat ${flags}` })).toContain('C-SE-16-legacy');
     expect(ids(id, { prompt: 'a cat --dur=5' })).toContain('C-SE-16-legacy');
     expect(ids(id, { prompt: 'a cat -- runs --fast' })).not.toContain('C-SE-16-legacy');
+    expect(ids(id, { prompt: 'a cat --resolutions --durations' })).not.toContain('C-SE-16-legacy');
+    // 逐个命令名检查（组合写法只能证明第一个匹配）
+    for (const f of ['rs', 'rt', 'dur', 'seed', 'cf', 'wm', 'resolution', 'ratio', 'duration', 'camerafixed', 'watermark']) expect(ids(id, { prompt: `a cat --${f} 1` }), f).toContain('C-SE-16-legacy');
+    // API：非法参数可能被忽略，也可能报错
+    expect(issue(id, { prompt: `a cat ${OFFICIAL_LEGACY_FLAGS}` }, 'C-SE-16-legacy')?.message.zh).toContain('也可能报错');
+  });
+
+  it('asset ID 提示：2.x 给出各自的编号示例，1.x 没有编号写法、改为直接描述主体', () => {
+    const msg = (id: string) => issue(id, { prompt: 'asset://abc dances' }, 'C-SE-16-asset')!.message;
+    expect(msg(V25).zh).toContain('如 @Image 1');
+    for (const id of V20S) expect(msg(id).zh).toContain('如 Image 1');
+    for (const id of [V15, V10, V10F]) {
+      expect(msg(id).zh).not.toContain('Image 1');
+      expect(msg(id).en).not.toContain('Image 1');
+      expect(issue(id, { prompt: 'asset-2026**** is a girl' }, 'C-SE-16-asset-id')!.message.zh).toContain('直接描述图中的主体');
+    }
   });
 
   it.each(ALL)('%s：asset:// 写进提示词报 error；asset-xxx 形式（启发式）只给 warn', (id) => {
@@ -45,17 +62,9 @@ describe('提示词 lint（C-SE-16）', () => {
     expect(ids(id, { prompt: 'a cat with assets' })).toEqual([...(id === V15 ? ['lifecycle'] : [])]);
   });
 
-  it('C-SE-16-zh：2.0 系列与 1.x 的提示词含中文给 warn；2.5 不提示；2.0 含假名按日语处理', () => {
-    for (const id of [...V20S, V15, V10, V10F]) {
-      expect(issue(id, { prompt: '一只猫在跳舞' }, 'C-SE-16-zh')?.severity).toBe('warn');
-      expect(ids(id, { prompt: 'a cat dancing' })).not.toContain('C-SE-16-zh');
-    }
-    expect(ids(V25, { prompt: '一只猫在跳舞' })).toEqual([]);
-    for (const id of V20S) expect(ids(id, { prompt: '猫が踊っている' })).not.toContain('C-SE-16-zh');
-    expect(ids(V10, { prompt: '猫が踊っている' })).toContain('C-SE-16-zh');
-    // 素材引用 token 不算；正片不发提示词
-    expect(ids(V20, { modeId: 'omni', prompt: '{{ref:i}} dances', slots: { reference_image: [img('i')] } })).toEqual([]);
-    expect(ids(V15, { modeId: 'draft_final', derivedFrom: draftFrom(V15), prompt: '一只猫' })).not.toContain('C-SE-16-zh');
+  it('中文提示词不再提示：S25、1.0 / 1.5 pro 指南写支持中文，2.0 指南有中文对白规则（用户决定各模型都按支持处理）', () => {
+    for (const id of ALL) expect(ids(id, { prompt: '一只猫在跳舞' })).toEqual(id === V15 ? ['lifecycle'] : []);
+    for (const m of ALL.map(model)) expect(m.constraints.some((c) => c.id === 'C-SE-16-zh')).toBe(false);
   });
 
   it('素材引用 token 的 id 不误判为 asset ID', () => {
@@ -148,7 +157,8 @@ describe('任务类型与时长', () => {
     const edit = (prompt: string) => ({ modeId: 'edit', prompt, slots: { reference_video: [vid('v')] } });
     expect(issue(V25, edit('make it night'), 'C-SE-3')?.severity).toBe('warn');
     expect(ids(V25, edit('address the camera'))).toContain('C-SE-3');
-    for (const p of ['Replace the sky with stars', 'edit the video: night', 'remove the hat', 'changing colors']) expect(ids(V25, edit(p))).toEqual([]);
+    // 2.5 指南另列了 insert 与 change to
+    for (const p of ['Replace the sky with stars', 'edit the video: night', 'remove the hat', 'changing colors', 'Insert a cat into {{ref:v}}', 'change to a night scene']) expect(ids(V25, edit(p))).toEqual([]);
     // 空提示词由引擎报必填
     expect(ids(V25, edit(''))).toEqual(['prompt:required']);
   });
@@ -156,7 +166,56 @@ describe('任务类型与时长', () => {
   it('C-SE-4：延长提示词缺延长意图关键词给 warn', () => {
     const ext = (prompt: string) => ({ modeId: 'extend', prompt, slots: { reference_video: [vid('v')] } });
     expect(issue(V25, ext('more of this'), 'C-SE-4')?.severity).toBe('warn');
-    for (const p of ['extend backward', 'continue the story', 'Continues walking']) expect(ids(V25, ext(p))).toEqual([]);
+    for (const p of ['extend backward', 'continue the story', 'Continues walking', 'continue from the last shot', 'extend the story']) expect(ids(V25, ext(p))).toEqual([]);
+  });
+
+  it('C-SE-20-ref：2.0 系列全模态参考里编辑 / 延长写成 reference Video N 给 warn', () => {
+    const omni = (prompt: string) => ({ modeId: 'omni', prompt, slots: { reference_image: [img('i')], reference_video: [vid('v1'), vid('v2')] } });
+    for (const id of V20S) {
+      // 插入的引用按 Video n 渲染后再判断
+      expect(issue(id, omni('Extend reference {{ref:v1}} backward: the boat drifts away'), 'C-SE-20-ref')?.severity).toBe('warn');
+      expect(ids(id, omni('Strictly edit reference Video 2, change the cup to {{ref:i}}'))).toContain('C-SE-20-ref');
+      for (const p of [
+        'remove the hat from reference {{ref:v1}}',
+        'Add a dancer to reference {{ref:v1}}',
+        'Generate content after reference Video 1: a dog runs in',
+        '{{ref:v1}} followed by reference {{ref:v2}}',
+        'continue from reference {{ref:v1}}: the boat sails on',
+        // 前面否定了一处，后面仍有真正的误用
+        'Do not edit reference {{ref:v1}}; strictly edit reference {{ref:v2}}',
+        // 否定在命中位置之后，不影响
+        'Extend reference {{ref:v1}} backward without changing the camera',
+      ])
+        expect(ids(id, omni(p)), p).toContain('C-SE-20-ref');
+      // 指南写法：直接写 Video N；组合任务（参考一个素材、编辑另一个视频）；只是参考；普通的 continue 动作；用参考视频做替换来源
+      for (const p of [
+        'Strictly edit {{ref:v1}}, change the cup to a teapot',
+        'Reference the camera movement of {{ref:v1}}, strictly edit {{ref:v2}}, remove the hat',
+        'reference Video 1 for the dance moves',
+        'Reference {{ref:v1}} for motion; the man continues walking.',
+        'Reference {{ref:v1}} for camera motion. Strictly edit {{ref:v2}}, remove the hat.',
+        'Reference {{ref:v1}} for camera motion, strictly edit {{ref:v2}}',
+        'replace the man in {{ref:v2}} with reference {{ref:v1}}',
+        'Strictly edit {{ref:v2}}. Add a dancer from reference {{ref:v1}}.',
+        'Insert the logo from reference {{ref:v1}} into {{ref:v2}}',
+        'Strictly edit {{ref:v2}}. Add the dancer in reference {{ref:v1}} to {{ref:v2}}.',
+        'Insert the logo in reference {{ref:v1}} into {{ref:v2}}.',
+        'Use the camera movement before reference {{ref:v1}} cuts to black.',
+        'Reference the camera movement after reference {{ref:v1}} cuts to the dancer.',
+        'Change the jacket to the one in reference {{ref:v1}}',
+        'Additionally reference {{ref:v1}} for the camera, and add a cat',
+        'Strictly edit {{ref:v2}}. Change colors to those in reference {{ref:v1}}.',
+        'Change outfits to those in reference {{ref:v1}}',
+        'Do not edit reference {{ref:v1}}; use it only for camera movement.',
+        "Don't modify reference {{ref:v1}}, strictly edit {{ref:v2}}",
+        'Keep the camera of reference {{ref:v1}} without editing reference {{ref:v1}}',
+        'Do not edit or extend reference {{ref:v1}}; use it only for camera movement.',
+        "Don't edit or modify reference {{ref:v1}}",
+        'Do not edit, modify or extend reference {{ref:v1}}; use it only for camera movement.',
+      ])
+        expect(ids(id, omni(p)), p).not.toContain('C-SE-20-ref');
+    }
+    expect(ids(V25, omni('Extend reference {{ref:v1}} backward'))).not.toContain('C-SE-20-ref');
   });
 
   it('C-SE-2-auto：2.5 全模态参考带视频且非 adaptive + -1 时给 warn 与一键修复', () => {

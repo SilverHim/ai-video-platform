@@ -650,7 +650,7 @@ OAS 中 `content[]` 是 `oneOf`，以 `type` 作为 discriminator [OAS-C]。
 
 ## gaps
 - status 枚举说法矛盾：查询和列表文档的 status 只列了 queued/running/cancelled/succeeded/failed，没有 expired；但回调说明、DELETE 状态表、execution_expires_after 说明都提到了 expired 状态。filter.status 能否筛 expired 未说明。
-- 旧的 '--参数' 写法：文档只给了 --rs/--rt/--dur/--seed/--cf/--wm 六个缩写示例。frames 的缩写没读到；JSON 字段与 --参数 同时出现时谁优先，文档没说。
+- 旧的 '--参数' 写法：文档只给了 --rs/--rt/--dur/--seed/--cf/--wm 六个缩写示例。frames 的缩写没读到；JSON 字段与 --参数 同时出现时谁优先，文档没说。（2026-10-10 补：1.0、1.5 pro 提示词指南的示例另用全称 --resolution / --ratio / --duration / --seed / --camerafixed / --watermark。）
 - seed 的适用模型：创建文档 Supported models 只列了 1.5 pro、1.0 pro、1.0 pro fast，但 2.5 的 Draft 规则说正式视频会复用 seed，2.5 和 2.0 的响应示例里也有 seed 值。2.0/2.5 请求里传 seed 是否生效或会不会报错，未明确。
 - camera_fixed 只说'参考图场景不支持'，对 2.0/2.5 传入是忽略还是报错，未说明。
 - draft 响应字段：查询和列表文档写'只有 Seedance 1.5 pro 返回'，但 2.5 也支持 Draft，2.0 的示例响应里也出现了 draft:false。实际哪些模型返回不一致。

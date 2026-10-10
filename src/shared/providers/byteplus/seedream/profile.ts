@@ -12,6 +12,8 @@ export const DOC_URLS = {
   tutorial: `${BASE}/seedream-4-0-5-0`,
   pro: `${BASE}/seedream-5-0-pro`,
   editing: `${BASE}/seedream-5-0-pro-editing-guide`,
+  /** 4.0 / 4.5 提示词指南（slug 是 4-0-5-0，正文只写 4.0 / 4.5） */
+  guide4x: `${BASE}/seedream-4-0-5-0-prompt-guide`,
   models: `${BASE}/model-list#9df4d9fd`,
   pricing: `${BASE}/model-pricing#c02be6ee`,
   errors: `${BASE}/error-codes`,
@@ -122,7 +124,7 @@ export const PROFILES: SeedreamProfile[] = [
     transparent: false,
     catalogParams: false,
     interactiveEdit: false,
-    docs: [...COMMON_DOCS, doc(DOC_URLS.stream)],
+    docs: [...COMMON_DOCS, doc(DOC_URLS.stream), doc(DOC_URLS.guide4x)],
   },
   {
     key: 'v40',
@@ -141,7 +143,7 @@ export const PROFILES: SeedreamProfile[] = [
     transparent: false,
     catalogParams: false,
     interactiveEdit: false,
-    docs: [...COMMON_DOCS, doc(DOC_URLS.stream)],
+    docs: [...COMMON_DOCS, doc(DOC_URLS.stream), doc(DOC_URLS.guide4x)],
   },
 ];
 

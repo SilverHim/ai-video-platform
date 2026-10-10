@@ -124,6 +124,17 @@ describe('MCP：agent 实测问题', () => {
     expect(omni.prompt.reference_syntax?.split(' / ')).toHaveLength(3);
   });
 
+  it('1.x 官方没有素材编号写法：get_model_schema 不给 reference_syntax', async () => {
+    s = await serve();
+    for (const model_id of ['byteplus/seedance-1-0-pro', 'byteplus/seedance-1-5-pro']) {
+      const r = await call(s, 'get_model_schema', { model_id });
+      const modes = r.data.modes as { id: string; prompt: { reference_syntax?: string; hint?: string } }[];
+      const first = modes.find((m) => m.id === 'i2v_first')!;
+      expect(first.prompt.reference_syntax).toBeUndefined();
+      expect(first.prompt.hint).not.toContain('Video 1');
+    }
+  });
+
   it('B6：preview_request 不再标为只读（本地文件会导入素材库）', async () => {
     s = await serve();
     const { tools } = await s.client.listTools();

@@ -26,6 +26,7 @@
     "prompt": "提示词",
     "required": "必填",
     "promptPlaceholder": "描述你想要的画面，输入 @ 引用素材",
+    "promptPlaceholderNoRefs": "描述你想要的画面",
     "params": "参数",
     "modelOverride": "Endpoint（可选）",
     "modelOverrideHint": "选了 Endpoint 后，请求里的 model 会换成它的 ID；不选就直接用模型 ID",

@@ -59,6 +59,20 @@ function refPlugin(labels: Map<string, string>) {
   );
 }
 
+/** 输入 @ 弹出当前素材列表；不可插入时整个补全扩展被移除（见 completionComp），已弹出的列表一并消失 */
+function refCompletion(refs: { current: RefOption[] }) {
+  const complete = (ctx: CompletionContext) => {
+    const word = ctx.matchBefore(/@[\w ]*$/);
+    if (!word || (word.from === word.to && !ctx.explicit)) return null;
+    return {
+      from: word.from,
+      options: refs.current.map((r) => ({ label: `@${r.label}`, detail: r.detail ?? '', apply: `{{ref:${r.id}}}` })),
+      filter: true,
+    };
+  };
+  return autocompletion({ override: [complete], activateOnTyping: true });
+}
+
 const theme = EditorView.theme({
   '&': { fontSize: '14px', border: '1px solid var(--color-border)', borderRadius: '6px', background: 'transparent' },
   '&.cm-focused': { outline: '2px solid color-mix(in srgb, var(--color-accent) 40%, transparent)' },
@@ -72,13 +86,19 @@ const theme = EditorView.theme({
 /**
  * 提示词编辑器：内部以 {{ref:<id>}} 保存素材引用，显示成"Image 1"芯片；
  * 输入 @ 弹出当前素材列表。素材重排后编号自动更新。
+ * insertable=false：模型没有素材编号写法，不弹出 @ 列表，但已有的引用仍按 refs 显示
  */
-export const PromptEditor = forwardRef<PromptEditorHandle, { value: string; onChange: (v: string) => void; refs: RefOption[]; placeholder?: string }>(function PromptEditor({ value, onChange, refs, placeholder }, ref) {
+export const PromptEditor = forwardRef<PromptEditorHandle, { value: string; onChange: (v: string) => void; refs: RefOption[]; insertable?: boolean; placeholder?: string }>(function PromptEditor(
+  { value, onChange, refs, insertable = true, placeholder },
+  ref,
+) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const refComp = useRef(new Compartment());
   // 占位文字单独放一个 Compartment：切换界面语言时能重新配置
   const placeholderComp = useRef(new Compartment());
+  // 补全单独放一个 Compartment：模式不允许插入引用时整个移除
+  const completionComp = useRef(new Compartment());
   const refsRef = useRef(refs);
   const onChangeRef = useRef(onChange);
 
@@ -88,15 +108,6 @@ export const PromptEditor = forwardRef<PromptEditorHandle, { value: string; onCh
   });
 
   useEffect(() => {
-    const complete = (ctx: CompletionContext) => {
-      const word = ctx.matchBefore(/@[\w ]*$/);
-      if (!word || (word.from === word.to && !ctx.explicit)) return null;
-      return {
-        from: word.from,
-        options: refsRef.current.map((r) => ({ label: `@${r.label}`, detail: r.detail ?? '', apply: `{{ref:${r.id}}}` })),
-        filter: true,
-      };
-    };
     view.current = new EditorView({
       parent: host.current!,
       state: EditorState.create({
@@ -107,7 +118,7 @@ export const PromptEditor = forwardRef<PromptEditorHandle, { value: string; onCh
           EditorView.lineWrapping,
           theme,
           placeholderComp.current.of(cmPlaceholder(placeholder ?? '')),
-          autocompletion({ override: [complete], activateOnTyping: true }),
+          completionComp.current.of(insertable ? refCompletion(refsRef) : []),
           refComp.current.of(refPlugin(new Map(refs.map((r) => [r.id, r.label])))),
           EditorView.updateListener.of((u) => u.docChanged && onChangeRef.current(u.state.doc.toString())),
         ],
@@ -123,6 +134,11 @@ export const PromptEditor = forwardRef<PromptEditorHandle, { value: string; onCh
     const v = view.current;
     if (v && v.state.doc.toString() !== value) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value } });
   }, [value]);
+
+  // 切换模式（是否允许插入引用）时增删补全
+  useEffect(() => {
+    view.current?.dispatch({ effects: completionComp.current.reconfigure(insertable ? refCompletion(refsRef) : []) });
+  }, [insertable]);
 
   // 切换界面语言时更新占位文字
   useEffect(() => {

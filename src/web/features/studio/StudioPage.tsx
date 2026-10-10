@@ -39,8 +39,9 @@ export function StudioPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const task = useTasks((s) => (selectedTask ? s.byId[selectedTask] : undefined));
 
+  // refs:false 的模式也算出标签：不提供插入，但旧提示词里已有的引用仍要正常显示
   const refs = useMemo(() => {
-    if (!evaluated || evaluated.ctx.mode.prompt.refs === false) return [];
+    if (!evaluated) return [];
     const order = computeRefOrder(evaluated.ctx.mode, evaluated.ctx.input.slots);
     const labelOf = evaluated.ctx.mode.prompt.refLabel ?? ((k: string, n: number) => `${k === 'image' ? 'Image' : k === 'video' ? 'Video' : 'Audio'} ${n}`);
     return Object.entries(order).map(([id, info]) => ({ id, label: labelOf(info.kind, info.n), detail: info.slotId }));
@@ -140,7 +141,7 @@ export function StudioPage() {
                     {mode.prompt.maxChars ? ` / ${mode.prompt.maxChars}` : ''} · {counted.zhChars} 字 · {counted.enWords} words
                   </span>
                 </div>
-                <PromptEditor ref={editor} value={form.prompt} onChange={setPrompt} refs={refs} placeholder={t('studio.promptPlaceholder')} />
+                <PromptEditor ref={editor} value={form.prompt} onChange={setPrompt} refs={refs} insertable={mode.prompt.refs !== false} placeholder={t(mode.prompt.refs === false ? 'studio.promptPlaceholderNoRefs' : 'studio.promptPlaceholder')} />
                 {mode.prompt.hint ? <p className="text-xs text-[var(--color-muted)]">{tx(mode.prompt.hint)}</p> : null}
               </div>
 

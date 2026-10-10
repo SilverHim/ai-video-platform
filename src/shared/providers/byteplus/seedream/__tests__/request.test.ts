@@ -171,24 +171,42 @@ describe('generate 模式', () => {
     expect(issueIds(evalForm(LITE, { prompt: Array(601).fill('cat').join(' ') }))).toContain('prompt:soft');
   });
 
-  it('提示词 hint：pro / flash 另支持 14 种语言并提示 <point>/<bbox>；其余只写中英文', () => {
+  it('提示词 hint：pro / flash 生成模式按编辑指南写坐标规则（透明背景不提示坐标）；4.x 按 4.x 指南；lite 只写中英文', () => {
+    const hint = (id: string, mode: string) => model(id).modes.find((m) => m.id === mode)!.prompt.hint!;
     for (const id of [PRO, FLASH]) {
-      const h = model(id).modes[0]!.prompt.hint!;
+      const h = hint(id, 'generate');
       expect(h.zh).toContain('14 种语言');
-      expect(h.zh).toContain('<bbox>');
       expect(h.en).toContain('Japanese');
+      for (const s of ['<bbox>', 'Image 1 <point>520 460</point>', '只有一张图也写', 'round(x 像素 ÷ 图宽 × 1000)', '范围由模型判断', 'keep … unchanged']) expect(h.zh).toContain(s);
+      // 编辑指南只演示了普通参考图编辑，透明背景没写能否用坐标
+      expect(hint(id, 'transparent').zh).not.toContain('<point>');
+      expect(hint(id, 'layer').zh).toContain('<bbox>');
     }
-    for (const id of [LITE, V45, V40]) {
-      for (const mode of model(id).modes) expect(mode.prompt.hint).toEqual({ zh: '支持中文、英文提示词', en: 'Chinese and English prompts are supported' });
+    for (const id of [V45, V40]) {
+      for (const mode of ['generate', 'group']) for (const s of ['支持中文、英文提示词', '双引号', '不要堆砌', 'Image 1 / Image 2', 'the red box']) expect(hint(id, mode).zh).toContain(s);
+      expect(hint(id, 'group').zh).toContain('逐张列出');
+      expect(hint(id, 'generate').zh).not.toContain('逐张列出');
+      expect(model(id).modes.find((m) => m.id === 'group')!.hint!.zh).toContain('a series / a set');
     }
+    for (const mode of model(LITE).modes) expect(mode.prompt.hint).toEqual({ zh: '支持中文、英文提示词', en: 'Chinese and English prompts are supported' });
+    expect(model(LITE).modes.find((m) => m.id === 'group')!.hint!.zh).not.toContain('a series');
   });
 
-  it('参考图槽位说明：Image n 对应关系标为推导', () => {
-    for (const id of ALL) {
-      const help = model(id).modes[0]!.slots[0]!.help!;
-      expect(help.zh).toContain('推导自官方示例');
-      expect(help.en).toContain('inferred');
+  it('参考图槽位说明：Image n 的依据按模型区分（lite 仍标推导）', () => {
+    const help = (id: string) => model(id).modes[0]!.slots[0]!.help!;
+    expect(help(LITE).zh).toContain('推导自官方示例');
+    expect(help(LITE).en).toContain('inferred');
+    for (const id of [V45, V40]) {
+      expect(help(id).zh).toContain('4.x 提示词指南');
+      expect(help(id).zh).toContain('推导');
+      expect(help(id).en).toContain('inferred');
     }
+    for (const id of [PRO, FLASH]) expect(help(id).zh).toContain('demo 代码');
+  });
+
+  it('4.x 挂上官方提示词指南链接', () => {
+    const guide = 'https://ai.byteplus.com/ark/region:ap-southeast-1/docs/seedream-4-0-5-0-prompt-guide';
+    for (const id of ALL) expect(model(id).docs.some((d) => d.url === guide)).toBe([V45, V40].includes(id));
   });
 
   it('输入图上限按 30,000,000 字节（MB 口径未核实，取较小值）', () => {

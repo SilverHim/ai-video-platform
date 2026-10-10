@@ -436,7 +436,7 @@
 - Draft 模式（draft=true，只有 Dreamina Seedance 2.5 和 Seedance 1.5 pro 支持）只能生成 480p，用其他分辨率会报错；正式视频要用 content[].type=draft_task + draft_task.id 引用草稿任务
 - content 的组合规则：首帧、首尾帧、omni reference（参考图/视频/音频）三种场景互斥，不能混用；2.0 系列不支持只传音频，至少要有一张参考图或一个参考视频；首尾帧时 role 必填（first_frame / last_frame），参考素材 role 固定为 reference_image / reference_video / reference_audio
 - Seedream 组图：sequential_image_generation=auto 时，输入参考图数 + 生成图数 ≤ 15；max_images 是 integer，默认 15，取值 [1, 15]（OpenAPI 有 minimum/maximum）。只有 Seedream 5.0 lite / 4.5 / 4.0 支持
-- 提示词长度建议：Seedream ≤ 300 个汉字或 600 个英文单词；Seedance ≤ 500 个汉字或 1000 个英文单词（只是建议，不是硬限制）。Seedance 只保证英文提示词，2.5 / 2.0 另外支持部分语言，文档没有列中文
+- 提示词长度建议：Seedream ≤ 300 个汉字或 600 个英文单词；Seedance ≤ 500 个汉字或 1000 个英文单词（只是建议，不是硬限制）。Seedance 只保证英文提示词，2.5 / 2.0 另外支持部分语言，文档没有列中文（2026-10-10 补：S25 写 2.5 支持中文，1.0 / 1.5 pro 提示词指南写支持中英文，2.0 提示词指南有中文对白规则）
 - data URL 格式要求：图像是 data:image/<fmt>;base64,...，音频是 data:audio/<fmt>;base64,...，<fmt> 必须小写。前端用 FileReader 生成 data URL 后要把 MIME 子类型转成小写，并核对 heic/heif 的支持模型（Seedream 支持；Seedance 是 1.5 pro 及之后的模型，教程写的是 1.5 Pro 和 2.0 系列）
 - API Key 可以被禁用（Disabled），禁用后请求鉴权失败（401 AuthenticationError）；Key 只能访问创建它的项目里的资源，接入点跨项目迁移后原 Key 不能再用于该接入点。前端遇到 401 时要提示用户检查 Key 状态、Region、项目
 - List 接口的 filter.model：API Key 是 Custom 权限时必须填；只能传 1 个；传 Model ID 时只返回经预置接入点发起的任务。前端"历史任务"页要允许用户填 Endpoint ID

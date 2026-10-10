@@ -4,8 +4,10 @@
  * 这里只补引擎查不到的跨槽位规则、文档冲突提示和提示词 lint；wireGuard 对最终请求体兜底（含 rawOverrides）。
  */
 import type { AssetRef, Constraint, MediaKind, PredCtx, WireGuard } from '../../../catalog/types.js';
+import type { I18nText } from '../../../i18n.js';
 import { T } from '../../../catalog/helpers.js';
 import { formatOf } from '../../../engine/media.js';
+import { computeRefOrder, renderPrompt } from '../../../engine/refs.js';
 import { getPath, isPlainObject } from '../../../request/wire.js';
 import { draftOn } from './fields.js';
 import { EDIT_CLIP_SEC, IMAGE_ASPECT, IMAGE_SIDE } from './modes.js';
@@ -22,16 +24,60 @@ const stripRefs = (prompt: string): string => prompt.replace(/\{\{ref:[^}]+\}\}/
 
 /* ---------------- 提示词 ---------------- */
 
-// 文档要求编辑 / 延长的提示词含这类英文词；未核实：中文意图词能否被识别没写，只匹配文档列出的词
-const EDIT_WORDS = /\b(edit(s|ed|ing)?|add(s|ed|ing)?|delet(e|es|ed|ing)|remov(e|es|ed|ing)|modif(y|ies|ied|ying)|replac(e|es|ed|ing)|chang(e|es|ed|ing))\b/i;
+// S25 与 2.5 提示词指南要求编辑 / 延长的提示词含这类英文词（指南另列了 insert、change to）；未核实：中文意图词能否被识别没写，只匹配文档列出的词
+const EDIT_WORDS = /\b(edit(s|ed|ing)?|add(s|ed|ing)?|insert(s|ed|ing)?|delet(e|es|ed|ing)|remov(e|es|ed|ing)|modif(y|ies|ied|ying)|replac(e|es|ed|ing)|chang(e|es|ed|ing))\b/i;
 const EXTEND_WORDS = /\b(extend(s|ed|ing)?|continu(e|es|ed|ing))\b/i;
-/** 官方示例的旧写法缩写 --rs --rt --dur --seed --cf --wm */
-const LEGACY_FLAGS = /(^|\s)--(rs|rt|dur|seed|cf|wm)(?=\s|=|$)/i;
+/**
+ * 文本命令：API 示例用缩写 --rs --rt --dur --seed --cf --wm，1.0 / 1.5 pro 提示词指南的示例另用全称
+ * --resolution --ratio --duration --camerafixed --watermark（frames 的命令名没读到，不匹配）
+ */
+const LEGACY_FLAGS = /(^|\s)--(rs|rt|dur|seed|cf|wm|resolution|ratio|duration|camerafixed|watermark)(?=\s|=|$)/i;
+/**
+ * 2.0 指南：编辑 / 延长时写 reference Video N 会被当成参考任务。这是启发式 lint，只认几种明确把 reference Video N 当编辑 / 延长对象的句式，宁可漏报：
+ * 动词直接带它（Extend / Strictly edit / continue from reference Video N）；remove / delete … from 它；add / insert … to / into 它；
+ * generate … before / after 它（指南的延长句式）；followed by 它（指南的多段衔接句式）。
+ * 中间最多隔 3 个词且不跨标点，中间出现 with / like / using / as / by 就不算（那是拿它当参考来源）；同一句里命中位置之前有 not / never / without 等否定也不算（含 Do not edit, modify or extend …）。
+ * "改 … in reference Video N"不认：和"改成 reference Video N 里那样"字面上分不开。
+ * "参考 Video 1、编辑 Video 2"这类组合任务（指南的 Combined tasks）、只参考某段运镜、普通的 continues walking 都不算
+ */
+const filler = (stop = 'with|like|using|as|by'): string => String.raw`(?:\s+(?!(?:${stop})\b)[^\s.,;:!?。，；：！？]+){0,3}?`;
+/** 动词的词形（不用 \w*，免得 add 匹配到 additionally / address） */
+const VERB_FORMS = {
+  edit: 'edit(?:s|ed|ing)?',
+  extend: 'extend(?:s|ed|ing)?',
+  continue: 'continu(?:e|es|ed|ing)',
+  modify: 'modif(?:y|ies|ied|ying)',
+  replace: 'replac(?:e|es|ed|ing)',
+  change: 'chang(?:e|es|ed|ing)',
+  remove: 'remov(?:e|es|ed|ing)',
+  delete: 'delet(?:e|es|ed|ing)',
+  add: 'add(?:s|ed|ing)?',
+  insert: 'insert(?:s|ed|ing)?',
+  generate: 'generat(?:e|es|ed|ing)',
+} as const;
+const verbs = (...names: (keyof typeof VERB_FORMS)[]): string => String.raw`\b(?:${names.map((n) => VERB_FORMS[n]).join('|')})\b`;
+const REF_VIDEO = String.raw`\s+(?:the\s+)?reference\s+@?video\s*\d`;
+const REFERENCE_VIDEO_TARGET = new RegExp(
+  [
+    verbs('edit', 'extend', 'continue', 'modify', 'replace', 'change', 'remove', 'delete', 'add', 'insert') + String.raw`(?:\s+from)?` + REF_VIDEO,
+    verbs('remove', 'delete') + filler() + String.raw`\s+from` + REF_VIDEO,
+    verbs('add', 'insert') + filler('with|like|using|as|by|from|in') + String.raw`\s+(?:to|into)` + REF_VIDEO,
+    verbs('generate') + filler() + String.raw`\s+(?:before|after)` + REF_VIDEO,
+    String.raw`\bfollowed\s+by` + REF_VIDEO,
+  ].join('|'),
+  'gi',
+);
+/** 否定范围只以句号、分号、问叹号、换行为界：逗号常连着并列动词（Do not edit, modify or extend …） */
+const CLAUSE_BREAK = /[.;!?。；！？\n]+/;
+const NEGATION = /\b(?:not|never|dont|without|no)\b|n['’]t\b/i;
+
+/** 按句找 reference Video N 作编辑 / 延长对象的写法；命中位置之前同一句里有否定词的不算 */
+function editsReferenceVideo(text: string): boolean {
+  return text.split(CLAUSE_BREAK).some((clause) => [...clause.matchAll(REFERENCE_VIDEO_TARGET)].some((m) => !NEGATION.test(clause.slice(0, m.index))));
+}
 const ASSET_URI = /asset:\/\//i;
 /** 启发式：PORT 的错误示例是 asset-2026****，会误伤 asset-based 之类的词，只给 warn */
 const ASSET_ID = /\basset-[A-Za-z0-9*]/i;
-const HAN = /\p{Script=Han}/u;
-const KANA = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
 
 const editIntent: Constraint = {
   id: 'C-SE-3',
@@ -42,8 +88,8 @@ const editIntent: Constraint = {
     return {
       fields: ['prompt'],
       message: T(
-        '编辑任务的提示词需写明编辑意图（edit the video / add / delete / remove / modify / replace / change 这类词），否则模型可能判定为其他任务类型并异步失败（TaskTypeMismatch）',
-        'Edit prompts must state the intent (edit the video / add / delete / remove / modify / replace / change …); otherwise the model may detect another task type and fail asynchronously (TaskTypeMismatch)',
+        '编辑任务的提示词需写明编辑意图（edit the video / add / insert / delete / remove / modify / replace / change to 这类词），否则模型可能判定为其他任务类型并异步失败（TaskTypeMismatch）',
+        'Edit prompts must state the intent (edit the video / add / insert / delete / remove / modify / replace / change to …); otherwise the model may detect another task type and fail asynchronously (TaskTypeMismatch)',
       ),
     };
   },
@@ -58,16 +104,16 @@ const extendIntent: Constraint = {
     return {
       fields: ['prompt'],
       message: T(
-        '延长任务的提示词需写明延长意图（extend forward / extend backward / continue / continue the story 这类词），否则可能异步失败（TaskTypeMismatch）',
-        'Extend prompts must state the intent (extend forward / extend backward / continue / continue the story …); otherwise the task may fail asynchronously (TaskTypeMismatch)',
+        '延长任务的提示词需写明延长意图（extend forward / extend backward / continue / continue from / continue the story / extend the story 这类词），否则可能异步失败（TaskTypeMismatch）',
+        'Extend prompts must state the intent (extend forward / extend backward / continue / continue from / continue the story / extend the story …); otherwise the task may fail asynchronously (TaskTypeMismatch)',
       ),
     };
   },
 };
 
 /**
- * C-SE-16：旧的 --参数 写法。方案写"不能用"，这里只给 warn：API 的 Parameter input methods 写明所有模型仍支持这种写法（弱校验），
- * 直接拦截与官方文档相悖；与表单字段同时出现时谁优先未核实。
+ * C-SE-16：提示词末尾的 --参数 文本命令。方案写"不能用"，这里只给 warn：API 的 Parameter input methods 写明所有模型仍支持这种写法
+ * （称为 Legacy / weak-validation method），1.0 / 1.5 pro 提示词指南也把它当作可选写法介绍；直接拦截与官方文档相悖。与表单字段同时出现时谁优先未核实。
  */
 const legacyFlags: Constraint = {
   id: 'C-SE-16-legacy',
@@ -77,52 +123,66 @@ const legacyFlags: Constraint = {
       ? {
           fields: ['prompt'],
           message: T(
-            '提示词里有 --rs / --rt / --dur / --seed / --cf / --wm 旧写法：这种写法弱校验，非法值会被忽略，与表单字段同时出现时谁优先文档没写；请改用表单字段',
-            'The prompt uses legacy --rs / --rt / --dur / --seed / --cf / --wm flags: they are weakly validated, invalid values may be ignored, and precedence over request fields is undocumented; use the form fields instead',
+            '提示词里有 --rs / --dur / --resolution / --duration 这类文本命令（API 称为旧写法）：弱校验，非法或不支持的参数可能被忽略、也可能报错，与表单字段同时出现时谁优先文档没写；请改用表单字段',
+            'The prompt contains text commands such as --rs / --dur / --resolution / --duration (the legacy method in the API docs): they are weakly validated, so invalid or unsupported values may be ignored or cause an error, and precedence over request fields is undocumented; use the form fields instead',
           ),
         }
       : null,
 };
 
-const ASSET_MSG = T('不要把 asset ID 写进提示词；请用素材编号（如 Image 1）引用，并把 asset:// 填进素材槽', 'Do not put asset IDs in the prompt; refer to assets by number (e.g. Image 1) and put asset:// URIs into the slots');
+/** 有素材编号写法的模型给出编号示例；1.x 官方没有编号写法，改为直接描述图中主体 */
+function assetMsg(p: SeedanceProfile): I18nText {
+  const label = p.refLabel?.('image', 1);
+  return label
+    ? T(`不要把 asset ID 写进提示词；请用素材编号（如 ${label}）引用，并把 asset:// 填进素材槽`, `Do not put asset IDs in the prompt; refer to assets by number (e.g. ${label}) and put asset:// URIs into the slots`)
+    : T('不要把 asset ID 写进提示词；把 asset:// 填进素材槽，提示词里直接描述图中的主体', 'Do not put asset IDs in the prompt; put asset:// URIs into the slots and describe the subject in the image directly');
+}
 
 /** C-SE-16：提示词里写了 asset:// URI（PORT 定为错误用法） */
-const assetUriInPrompt: Constraint = {
-  id: 'C-SE-16-asset',
-  severity: 'error',
-  check: (c) => (c.mode.id !== MODE.final && ASSET_URI.test(stripRefs(c.input.prompt ?? '')) ? { fields: ['prompt'], message: ASSET_MSG } : null),
-};
+function assetUriInPrompt(p: SeedanceProfile): Constraint {
+  const message = assetMsg(p);
+  return {
+    id: 'C-SE-16-asset',
+    severity: 'error',
+    check: (c) => (c.mode.id !== MODE.final && ASSET_URI.test(stripRefs(c.input.prompt ?? '')) ? { fields: ['prompt'], message } : null),
+  };
+}
 
 /** C-SE-16：疑似 asset-xxx 形式的 ID（启发式，只给 warn） */
-const assetIdInPrompt: Constraint = {
-  id: 'C-SE-16-asset-id',
-  severity: 'warn',
-  check: (c) => {
-    const text = stripRefs(c.input.prompt ?? '');
-    return c.mode.id !== MODE.final && !ASSET_URI.test(text) && ASSET_ID.test(text) ? { fields: ['prompt'], message: ASSET_MSG } : null;
-  },
-};
-
-/** 未核实：API 的语言清单里没有中文，只有 S25 写了 2.5 支持中文；2.0 系列列了日语，含假名时按日语处理 */
-function chinesePrompt(p: SeedanceProfile): Constraint {
+function assetIdInPrompt(p: SeedanceProfile): Constraint {
+  const message = assetMsg(p);
   return {
-    id: 'C-SE-16-zh',
+    id: 'C-SE-16-asset-id',
     severity: 'warn',
     check: (c) => {
       const text = stripRefs(c.input.prompt ?? '');
-      if (c.mode.id === MODE.final || !HAN.test(text) || (p.v2 && KANA.test(text))) return null;
-      return {
-        fields: ['prompt'],
-        message: p.v2
-          ? T(
-              '提示词含中文：API 的语言清单里 Seedance 2.0 系列只列了英语、西班牙语、印尼语、葡萄牙语、日语，没有中文（只有 2.5 写明支持中文），效果未核实',
-              'The prompt contains Chinese: the API lists English, Spanish, Indonesian, Portuguese and Japanese for Seedance 2.0, not Chinese (only 2.5 documents Chinese); results are unverified',
-            )
-          : T('提示词含中文：API 的语言清单里 Seedance 1.x 只列了英语，没有中文，效果未核实', 'The prompt contains Chinese: the API lists only English for Seedance 1.x; results are unverified'),
-      };
+      return c.mode.id !== MODE.final && !ASSET_URI.test(text) && ASSET_ID.test(text) ? { fields: ['prompt'], message } : null;
     },
   };
 }
+
+/*
+ * 中文提示词不再提示：API 的语言清单没列中文，但 S25 写 2.5 支持中文，1.0 / 1.5 pro 提示词指南写支持中英文，
+ * 2.0 提示词指南有中文对白的写法规则；用户决定各模型都按支持中文处理（原 C-SE-16-zh 已删除）
+ */
+
+/** C-SE-20-ref：2.0 系列在全模态参考里编辑 / 延长时写成 reference Video N（指南警告会被当成参考任务） */
+const referenceVideo: Constraint = {
+  id: 'C-SE-20-ref',
+  severity: 'warn',
+  check: (c) => {
+    if (c.mode.id !== MODE.omni) return null;
+    const { text } = renderPrompt(c.input.prompt ?? '', computeRefOrder(c.mode, c.slots), c.mode.prompt.refLabel);
+    if (!editsReferenceVideo(text)) return null;
+    return {
+      fields: ['prompt'],
+      message: T(
+        '提示词把 reference Video N 当成了编辑 / 延长的对象：要编辑 / 延长这段视频时请直接写 Video N，写成 reference Video N 会被当成参考任务（Seedance 2.0 提示词指南）；只是参考它的动作、运镜等时可以忽略',
+        'The prompt edits / extends "reference Video N": write "Video N" directly for the video to edit / extend, otherwise it is treated as a reference task (Seedance 2.0 prompt guide); ignore this if you only reference its motion, camera work etc.',
+      ),
+    };
+  },
+};
 
 /* ---------------- 素材 ---------------- */
 
@@ -371,13 +431,14 @@ const finalPrompt: Constraint = {
 };
 
 export function buildConstraints(p: SeedanceProfile): Constraint[] {
-  const out: Constraint[] = [legacyFlags, assetUriInPrompt, assetIdInPrompt, ...(p.zhPrompt ? [] : [chinesePrompt(p)]), imageBoundary];
+  const out: Constraint[] = [legacyFlags, assetUriInPrompt(p), assetIdInPrompt(p), imageBoundary];
   if (p.heicConflict) out.push(heicImage);
   const o = p.omni;
   if (o) {
     out.push(omniNotEmpty, totalDuration('video', o.totalVideoSec), totalDuration('audio', o.totalAudioSec), unverifiedDuration(o.totalVideoSec, o.totalAudioSec), videoCodec, localVideo);
     if (!o.audioOnly) out.push(noAudioOnly);
   }
+  if (p.v2 && p.key !== 'v25') out.push(referenceVideo);
   if (p.v2 && p.key !== 'v25' && p.duration.auto) out.push(v20AutoDuration);
   if (p.editExtend) out.push(editIntent, extendIntent, autoTaskType, autoClip);
   if (p.draft) {

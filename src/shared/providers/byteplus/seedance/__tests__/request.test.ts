@@ -100,10 +100,12 @@ describe('模型注册与能力矩阵', () => {
     }
   });
 
-  it('文档冲突项：output_format 为实验字段且 mov 徽标写明冲突；2.0 的 adaptive 徽标写明不发送', () => {
+  it('output_format 不再标实验（用户决定按 S25 / API / 2.5 指南）、mov 徽标只提示播放兼容；2.0 的 adaptive 徽标写明不发送', () => {
     const fmt = model(V25).fields.find((f) => f.key === 'output_format');
-    expect(fmt?.experimental).toBe(true);
-    expect(fmt?.type === 'enum' ? fmt.options.find((o) => o.value === 'mov')?.badge?.zh : '').toContain('文档冲突');
+    expect(fmt?.experimental).toBeUndefined();
+    const mov = fmt?.type === 'enum' ? fmt.options.find((o) => o.value === 'mov')?.badge?.zh : '';
+    expect(mov).not.toContain('文档冲突');
+    expect(mov).toContain('部分播放器放不了');
     for (const id of ALL) {
       const ratio = model(id).fields.find((f) => f.key === 'ratio');
       const badge = ratio?.type === 'enum' ? ratio.options.find((o) => o.value === 'adaptive')?.badge : undefined;
@@ -151,10 +153,80 @@ describe('模型注册与能力矩阵', () => {
     expect(spec(V10, 'i2v_first', 'first_frame').formats).toEqual(['jpeg', 'png', 'webp', 'bmp', 'tiff', 'gif']);
   });
 
-  it('提示词：软上限 500 汉字 / 1000 英文单词；2.5 用 @Image n，其余 Image n', () => {
+  it('提示词：软上限 500 汉字 / 1000 英文单词；2.5 用 @Image n，2.0 系列 Image n；1.x 官方没有素材编号写法，不提供引用', () => {
     for (const m of SEEDANCE_MODELS) for (const mode of m.modes.filter((x) => x.id !== 'draft_final')) expect(mode.prompt.softMax).toEqual({ zhChars: 500, enWords: 1000 });
     expect(model(V25).modes[0]!.prompt.refLabel?.('video', 2)).toBe('@Video 2');
-    expect(model(V20).modes[0]!.prompt.refLabel?.('audio', 1)).toBe('Audio 1');
+    for (const id of V20S) expect(model(id).modes[0]!.prompt.refLabel?.('audio', 1)).toBe('Audio 1');
+    for (const id of V1X) {
+      for (const mode of model(id).modes.filter((x) => x.id !== 'draft_final')) {
+        expect(mode.prompt.refs).toBe(false);
+        expect(mode.prompt.refLabel).toBeUndefined();
+      }
+    }
+  });
+
+  it('提示词说明按各自的官方指南：1.x 不提视频 / 音频编号，2.0 用 Shot 分镜与符号约定，2.5 注明 S25 约定', () => {
+    const hint = (id: string, mode: string) => model(id).modes.find((m) => m.id === mode)!.prompt.hint!.zh;
+    for (const id of V1X) for (const mode of model(id).modes.filter((x) => x.id !== 'draft_final')) expect(hint(id, mode.id)).not.toMatch(/Video 1|Audio 1/);
+    for (const id of [V10, V10F]) {
+      expect(hint(id, 't2v')).toContain('Camera switch');
+      expect(hint(id, 't2v')).toContain('句首');
+      expect(hint(id, 'i2v_first')).toContain('不用 Image 1 编号');
+    }
+    expect(hint(V10, 'i2v_first_last')).toContain('不用 Image 1 编号');
+    expect(hint(V15, 't2v')).toContain('说话人');
+    expect(hint(V15, 'i2v_first')).toContain('this image');
+    expect(hint(V15, 'i2v_first_last')).not.toContain('this image');
+    for (const id of V20S) {
+      expect(hint(id, 't2v')).toContain('Shot 1');
+      expect(hint(id, 't2v')).toContain('（）');
+      expect(hint(id, 't2v')).toContain('专有名词除外');
+      expect(model(id).modes[0]!.prompt.hint!.en).toContain('proper nouns excepted');
+      expect(hint(id, 't2v')).not.toContain('Image 1');
+      expect(hint(id, 'omni')).toContain('名字@Image 1');
+      expect(model(id).modes.find((m) => m.id === 'omni')!.hint!.zh).toContain('不要写 reference Video 1');
+    }
+    expect(hint(V25, 't2v')).toContain('Seedance 2.5 教程页约定');
+    expect(hint(V25, 't2v')).not.toContain('@Image 1');
+    expect(hint(V25, 'omni')).toContain('不参考什么');
+    expect(model(V25).modes.find((m) => m.id === 'omni')!.hint!.zh).toContain('Image 1 is the first frame');
+    expect(hint(V25, 'edit')).toMatch(/^必须写明编辑意图.*insert.*change to/);
+    expect(hint(V25, 'edit')).toContain('@Image 1');
+    expect(hint(V25, 'extend')).toContain('continue from');
+    expect(model(V25).modes.find((m) => m.id === 'edit')!.hint!.zh).toContain('8n+1');
+  });
+
+  it('首尾帧说明：2.5 尾帧写拉伸（用户按 2.5 指南定），其余写裁剪；1.0 提示建议比例', () => {
+    const help = (id: string, slot: string) => model(id).modes.find((m) => m.id === (slot === 'last_frame' ? 'i2v_first_last' : 'i2v_first'))!.slots.find((s) => s.id === slot)!.help!.zh;
+    expect(help(V25, 'last_frame')).toContain('拉伸');
+    for (const id of [...V20S, V15, V10]) expect(help(id, 'last_frame')).toContain('自动裁剪');
+    for (const id of [V10, V10F]) expect(help(id, 'first_frame')).toContain('21:9');
+    for (const id of [V25, ...V20S, V15]) expect(help(id, 'first_frame')).not.toContain('21:9');
+  });
+
+  it('字段说明按指南补充：1.5 pro 的音频、2.0 系列的水印与比例；各模型挂各自的提示词指南', () => {
+    const help = (id: string, key: string) => model(id).fields.find((f) => f.key === key)!.help!.zh;
+    expect(help(V15, 'generate_audio')).toContain('背景音乐');
+    for (const id of [V25, ...V20S]) expect(help(id, 'generate_audio')).toBe('输出的音频为单声道');
+    for (const id of ALL) {
+      expect(help(id, 'watermark').includes('do not generate watermarks')).toBe(V20S.includes(id));
+      expect(help(id, 'ratio').includes('横屏')).toBe(V20S.includes(id));
+    }
+    const docs = (id: string) => model(id).docs.map((d) => d.url);
+    expect(docs(V25)).toContain('https://ai.byteplus.com/ark/region:ap-southeast-1/docs/seedance-2-5-prompt-guide');
+    for (const id of V20S) expect(docs(id)).toContain('https://ai.byteplus.com/ark/region:ap-southeast-1/docs/seedance-2-0-prompt-guide');
+    expect(docs(V15)).toContain('https://ai.byteplus.com/ark/region:ap-southeast-1/docs/seedance-1-5-pro');
+    for (const id of [V10, V10F]) expect(docs(id)).toContain('https://ai.byteplus.com/ark/region:ap-southeast-1/docs/seedance-1-0-pro-pro-fast');
+  });
+
+  it('素材槽说明带上指南的稳定性建议', () => {
+    const help = (id: string, mode: string, slot: string) => model(id).modes.find((m) => m.id === mode)!.slots.find((s) => s.id === slot)!.help!.zh;
+    expect(help(V25, 'omni', 'reference_image')).toContain('1–8 个较稳定');
+    expect(help(V25, 'omni', 'reference_audio')).toContain('5–10 秒');
+    expect(help(V25, 'edit', 'reference_image')).toContain('1–5 张较稳定');
+    expect(help(V25, 'edit', 'reference_video')).toContain('20 秒以内');
+    expect(help(V25, 'extend', 'reference_video')).not.toContain('20 秒以内');
+    for (const id of V20S) expect(help(id, 'omni', 'reference_image')).toContain('不用三视图');
   });
 
   it('费用估算：报告没有 token 单价与公式，一律返回 null', () => {
@@ -177,12 +249,21 @@ const text = (t: string) => ({ type: 'text', text: t });
 /** 每个模式的典型输入与期望的 content[]（text 在前，素材按槽位声明顺序 → 槽位内顺序） */
 function modeCase(id: string, modeId: string): { over: Partial<FormInput>; content: Obj[] } {
   const L = (k: MediaKind, n: number) => label(id, k, n);
+  // 1.x 没有素材编号写法：提示词直接称呼图中主体
+  const noRefs = model(id).modes[0]!.prompt.refs === false;
   switch (modeId) {
     case 't2v':
       return { over: { values: { ratio: '16:9' } }, content: [TEXT] };
     case 'i2v_first':
+      if (noRefs) return { over: { prompt: 'the girl starts to dance', values: { ratio: '16:9' }, slots: { first_frame: [img('f')] } }, content: [text('the girl starts to dance'), imageItem('f', 'first_frame')] };
       return { over: { prompt: '{{ref:f}} starts to dance', values: { ratio: '16:9' }, slots: { first_frame: [img('f')] } }, content: [text(`${L('image', 1)} starts to dance`), imageItem('f', 'first_frame')] };
     case 'i2v_first_last':
+      if (noRefs) {
+        return {
+          over: { prompt: 'the girl turns around', values: { ratio: '16:9' }, slots: { first_frame: [img('a')], last_frame: [img('b')] } },
+          content: [text('the girl turns around'), imageItem('a', 'first_frame'), imageItem('b', 'last_frame')],
+        };
+      }
       return {
         over: { prompt: 'from {{ref:a}} to {{ref:b}}', values: { ratio: '16:9' }, slots: { first_frame: [img('a')], last_frame: [img('b')] } },
         content: [text(`from ${L('image', 1)} to ${L('image', 2)}`), imageItem('a', 'first_frame'), imageItem('b', 'last_frame')],

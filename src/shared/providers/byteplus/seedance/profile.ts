@@ -16,6 +16,11 @@ export const DOC_URLS = {
   tutorial: `${BASE}/video-generation-tutorial`,
   s25: `${BASE}/seedance-2-5`,
   s20: `${BASE}/seedance-2-0`,
+  // 官方提示词指南（1.5 pro 的指南就是它的模型页）
+  guide25: `${BASE}/seedance-2-5-prompt-guide`,
+  guide20: `${BASE}/seedance-2-0-prompt-guide`,
+  guide15: `${BASE}/seedance-1-5-pro`,
+  guide10: `${BASE}/seedance-1-0-pro-pro-fast`,
   models: `${BASE}/model-list#7571da3f`,
   deprecation: `${BASE}/model-deprecation-notice`,
   portrait: `${BASE}/seedance-portrait-asset-guide`,
@@ -101,21 +106,22 @@ export interface SeedanceProfile {
   heicConflict: boolean;
   /** S20 能力表与 API 冲突：ratio 不含 adaptive、duration 只写 4–15 */
   s20Conflict: boolean;
-  /** 提示词语言清单里有中文（只有 S25 写了 2.5 支持中文） */
-  zhPrompt: boolean;
-  /** 提示词素材引用写法 */
-  refLabel: (kind: MediaKind, n: number) => string;
+  /** 提示词素材引用写法；null 表示官方没有素材编号写法，不提供插入引用 */
+  refLabel: ((kind: MediaKind, n: number) => string) | null;
   docs: DocRef[];
 }
 
 const KIND_NAME: Record<MediaKind, string> = { image: 'Image', video: 'Video', audio: 'Audio' };
-/** 2.5 提示词指南：@Image 1 / @Video 1 / @Audio 1 */
+/** 2.5：S25 Prompt rules 写 @Image 1 / @Video 1 / @Audio 1 */
 const atLabel = (k: MediaKind, n: number): string => `@${KIND_NAME[k]} ${n}`;
-/** 2.0：素材类型 + 序号，如 Image 1；1.x 文档没有素材引用规则（未核实），沿用同一写法 */
+/**
+ * 2.0：素材类型 + 序号，如 Image 1。2.0 提示词指南 Image N 与 @Image N 两种都用，主体绑定写"名字@Image N"。
+ * 1.0 / 1.5 pro 的提示词指南没有素材编号写法（图生示例直接称呼图中主体或写 this image），refLabel 为 null
+ */
 const plainLabel = (k: MediaKind, n: number): string => `${KIND_NAME[k]} ${n}`;
 
 const COMMON_DOCS = [doc(DOC_URLS.create), doc(DOC_URLS.get), doc(DOC_URLS.tutorial), doc(DOC_URLS.models)];
-const V20_DOCS = [...COMMON_DOCS, doc(DOC_URLS.s20), doc(DOC_URLS.portrait)];
+const V20_DOCS = [...COMMON_DOCS, doc(DOC_URLS.s20), doc(DOC_URLS.guide20), doc(DOC_URLS.portrait)];
 
 const OMNI_V20: OmniLimits = { image: 9, video: 3, audio: 3, totalVideoSec: 15, totalAudioSec: 15, clipSec: [2, 15], audioOnly: false };
 
@@ -141,7 +147,6 @@ const v20Base = {
   heic: true,
   heicConflict: false,
   s20Conflict: true,
-  zhPrompt: false,
   refLabel: plainLabel,
   docs: V20_DOCS,
 } satisfies Partial<SeedanceProfile>;
@@ -168,9 +173,8 @@ const v10Base = {
   heic: false,
   heicConflict: false,
   s20Conflict: false,
-  zhPrompt: false,
-  refLabel: plainLabel,
-  docs: COMMON_DOCS,
+  refLabel: null,
+  docs: [...COMMON_DOCS, doc(DOC_URLS.guide10)],
 } satisfies Partial<SeedanceProfile>;
 
 export const PROFILES: SeedanceProfile[] = [
@@ -204,10 +208,8 @@ export const PROFILES: SeedanceProfile[] = [
     heic: true,
     heicConflict: true,
     s20Conflict: false,
-    // S25 多语言节写 2.5 原生支持中文；API 的语言清单没有中文
-    zhPrompt: true,
     refLabel: atLabel,
-    docs: [...COMMON_DOCS, doc(DOC_URLS.s25), doc(DOC_URLS.portrait)],
+    docs: [...COMMON_DOCS, doc(DOC_URLS.s25), doc(DOC_URLS.guide25), doc(DOC_URLS.portrait)],
   },
   {
     ...v20Base,
@@ -273,9 +275,8 @@ export const PROFILES: SeedanceProfile[] = [
     heic: true,
     heicConflict: false,
     s20Conflict: false,
-    zhPrompt: false,
-    refLabel: plainLabel,
-    docs: [...COMMON_DOCS, doc(DOC_URLS.deprecation, '第四批：2026-11-11 停止服务')],
+    refLabel: null,
+    docs: [...COMMON_DOCS, doc(DOC_URLS.guide15), doc(DOC_URLS.deprecation, '第四批：2026-11-11 停止服务')],
   },
   {
     ...v10Base,

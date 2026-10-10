@@ -9,7 +9,10 @@ export const URL_TTL_MS = 24 * 60 * 60 * 1000;
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-/** 请求体里 Seedream 特有部分：model、prompt、image（1 张字符串、多张数组，顺序与 "Image n" 编号一致） */
+/**
+ * 请求体里 Seedream 特有部分：model、prompt、image（1 张字符串、多张数组）。
+ * 本平台保证数组顺序与提示词里渲染出的 "Image n" 编号一致；官方按数组顺序解释 Image n 的依据见 models.ts 的 refLabel 注释
+ */
 export function composeSeedream(c: BuildCtx): Record<string, unknown> {
   const ids = Object.entries(c.refOrder)
     .filter(([, r]) => r.kind === 'image')

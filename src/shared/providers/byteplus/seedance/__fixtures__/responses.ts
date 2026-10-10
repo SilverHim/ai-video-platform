@@ -15,6 +15,10 @@ export const OFFICIAL_DRAFT_CONTENT = `[{"type":"draft_task","draft_task":{"id":
 
 /** 旧写法缩写（video-api.md §3.1 官方示例） */
 export const OFFICIAL_LEGACY_FLAGS = '--rs 720p --rt 16:9 --dur 5 --seed 11 --cf false --wm true';
+/** 1.0 提示词指南示例末尾的全称文本命令（原文两个空格） */
+export const GUIDE_10_LEGACY_FLAGS = '--resolution 1080p  --duration 5 --camerafixed false';
+/** 1.5 pro 提示词指南旧写法示例里注释掉的全称写法 */
+export const GUIDE_15_LEGACY_FLAGS = '--resolution 720p --ratio 16:9 --duration 5 --seed 11 --camerafixed false --watermark true';
 
 /** 视频结果地址形态（platform-cors.md 结果 URL 节） */
 export const OFFICIAL_VIDEO_URL = 'https://ark-content-generation-ap-southeast-1.tos-ap-southeast-1.volces.com/xxx';

@@ -26,6 +26,7 @@
     "prompt": "Prompt",
     "required": "Required",
     "promptPlaceholder": "Describe the result; type @ to reference assets",
+    "promptPlaceholderNoRefs": "Describe the result",
     "params": "Parameters",
     "modelOverride": "Endpoint (optional)",
     "modelOverrideHint": "With an endpoint selected, the request model becomes its ID; otherwise the model ID is used",
