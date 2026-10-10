@@ -40,6 +40,8 @@ export interface SubmitOptions {
   publicUploadConsent?: boolean;
   /** 选用的临时托管站 id（uguu / tmpfiles） */
   tempHost?: string;
+  /** 任务记录建好时回调（解析素材、调用上游之前）：调用方可以先拿到任务 id */
+  onRegistered?: (taskId: string) => void;
 }
 
 export interface PreviewResult {
@@ -198,6 +200,7 @@ export class TaskService {
     };
     this.d.store.insertTask(task);
     this.emit(task.id);
+    opts.onRegistered?.(task.id);
 
     let built: BuiltRequest;
     try {
@@ -233,7 +236,7 @@ export class TaskService {
 
   /**
    * 提交但不等上游完成：校验、建好任务就返回，上游调用与落盘在后台继续（done 在完成时兑现）。
-   * MCP 的 generate_image 用它限定等待时长；后台出意外时把任务记为失败，done 不会拒绝
+   * MCP 的生成工具用它限定调用时长（opts.onRegistered 在解析素材之前就给出任务 id）；后台出意外时把任务记为失败，done 不会拒绝
    */
   async start(form: FormInput, origin: TaskOrigin, opts: SubmitOptions = {}): Promise<{ task: TaskRecord; done: Promise<TaskRecord> }> {
     if (this.closing) throw new TaskInputError('shutting_down', { zh: '服务正在关闭，请稍后再提交', en: 'The server is shutting down; submit again later' }, [], 503);

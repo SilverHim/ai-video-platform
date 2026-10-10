@@ -186,7 +186,7 @@
     "rotateConfirm": "The old token stops working immediately and connected agents must re-run the command. Continue?",
     "note1": "The command writes to ~/.claude.json (user scope), not to the project repo.",
     "note2": "Generation tools are billed; results include an estimated cost. Public upload of local videos needs allow_public_upload from the agent.",
-    "note3": "The command sets a 10-minute timeout (timeout: 600000). generate_image waits up to 50 s by default and returns a task_id if not done yet; continue with get_task. A timed-out call is not a failure — do not resubmit."
+    "note3": "The command sets a 10-minute timeout (timeout: 600000). Generation tools wait for the result (up to 9 minutes); in Claude Code's main conversation, calls longer than 2 minutes move to the background so you can keep chatting and the result comes back automatically. A timed-out call is not a failure — do not resubmit."
   },
   "library": {
     "presets": "Parameter presets",

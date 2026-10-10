@@ -6,13 +6,18 @@ import { Client } from '@modelcontextprotocol/client';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { Client as LegacyClient } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport as LegacyTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TaskRecord } from '../../shared/task/records.js';
+import { isTerminal } from '../../shared/task/status.js';
 import { createApp } from '../app.js';
 import { ensureDataDirs, resolveConfig } from '../config.js';
 import { createContainer } from '../container.js';
 import { MOCK_MP4_BASE64 } from '../mock/media.js';
 import { setMockTiming } from '../mock/upstream.js';
 import { McpTokenStore } from '../mcp/token.js';
+import { DEFAULT_CALL_BUDGET, setCallBudget } from '../mcp/timing.js';
+import { createUploadTargets, type UploadTargets } from '../upload-targets/registry.js';
+import { UploadError, type UploadTarget } from '../upload-targets/types.js';
 import { fakeCatalog } from './fake-catalog.js';
 import { tempDir } from './helpers.js';
 
@@ -20,14 +25,15 @@ interface Running {
   url: string;
   token: string;
   dataDir: string;
+  container: ReturnType<typeof createContainer>;
   close: () => Promise<void>;
 }
 
-async function serve(): Promise<Running> {
+async function serve(opts: { uploadTargets?: UploadTargets } = {}): Promise<Running> {
   const tmp = tempDir();
   const config = resolveConfig({ dataDir: tmp.dir, port: 0, mock: true });
   ensureDataDirs(config.paths);
-  const container = createContainer(config, { env: {}, catalog: fakeCatalog });
+  const container = createContainer(config, { env: {}, catalog: fakeCatalog, ...opts });
   let port = 0;
   const app = createApp({ config, keystore: container.keystore, store: container.store, services: container.services, version: 'test', getPort: () => port, quiet: true, catalog: fakeCatalog });
   const server = createAdaptorServer({ fetch: app.fetch });
@@ -38,6 +44,7 @@ async function serve(): Promise<Running> {
     url: `http://127.0.0.1:${port}/mcp`,
     token,
     dataDir: tmp.dir,
+    container,
     close: async () => {
       if ('closeAllConnections' in server) server.closeAllConnections();
       await new Promise<void>((r) => server.close(() => r()));
@@ -53,7 +60,35 @@ afterEach(async () => {
   await running?.close();
   running = null;
   setMockTiming({ queuedMs: 1500, runningMs: 3000 });
+  setCallBudget(DEFAULT_CALL_BUDGET);
 });
+
+/** 等到有任务满足条件（由任务事件唤醒），超时报错 */
+function untilTask(r: Running, pred: (t: TaskRecord) => boolean, timeoutMs = 10_000): Promise<TaskRecord> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      unsub();
+      reject(new Error('等待任务状态超时'));
+    }, timeoutMs);
+    const check = () => {
+      const t = r.container.store.listTasks().find(pred);
+      if (!t) return;
+      clearTimeout(timer);
+      unsub();
+      resolve(t);
+    };
+    const unsub = r.container.services.events.subscribe(check);
+    check();
+  });
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** mock 托管站：上传由 upload 决定（用来模拟上传很慢或失败） */
+function withTempHost(upload: UploadTarget['upload']): UploadTargets {
+  const targets = createUploadTargets(true);
+  return { ...targets, tempHosts: { ...targets.tempHosts, uguu: { ...targets.tempHosts.uguu!, upload } } };
+}
 
 const text = (r: { content: unknown }) => JSON.parse(((r.content as { type: string; text?: string }[]).find((c) => c.type === 'text')!).text!);
 
@@ -125,6 +160,29 @@ describe('MCP 工具（v2 客户端，2026-07-28 协议）', () => {
     await client.close();
   });
 
+  it('create_video_task 默认等到出结果：等待期间任务完成就立即返回结果', async () => {
+    running = await serve();
+    const r = running;
+    const client = await v2Client(r);
+    const t0 = Date.now();
+    const pending = client.callTool({ name: 'create_video_task', arguments: { model_id: 'fake/video', prompt: 'waves' } });
+    void pending.catch(() => undefined);
+    try {
+      // 假模型的首次查询要 60 秒：等任务在上游建好（queued）后手动推进轮询
+      const { id } = await untilTask(r, (t) => t.status === 'queued');
+      for (let i = 0; i < 5 && !isTerminal(r.container.store.getTask(id)!.status); i++) await r.container.services.scheduler.poll(id);
+      expect(r.container.store.getTask(id)!.status).toBe('succeeded');
+      const res = text(await pending);
+      expect(Date.now() - t0).toBeLessThan(15_000);
+      expect(res.status).toBe('succeeded');
+      expect(res.next).toBeUndefined();
+      expect(res.files.length).toBeGreaterThan(0);
+    } finally {
+      await client.close();
+      await pending.catch(() => undefined);
+    }
+  }, 30_000);
+
   it('本地视频需公开上传时，没带 allow_public_upload 拒绝；带上后提交', async () => {
     running = await serve();
     const mp4 = join(running.dataDir, 'clip.mp4');
@@ -134,8 +192,115 @@ describe('MCP 工具（v2 客户端，2026-07-28 协议）', () => {
     const denied = await client.callTool({ name: 'create_video_task', arguments: args });
     expect(denied.isError).toBe(true);
     expect(text(denied).error).toContain('allow_public_upload');
-    const ok = text(await client.callTool({ name: 'create_video_task', arguments: { ...args, allow_public_upload: true } }));
+    // wait_seconds: 0 立即返回（默认会等到出结果）
+    const ok = text(await client.callTool({ name: 'create_video_task', arguments: { ...args, allow_public_upload: true, wait_seconds: 0 } }));
     expect(ok.status).toBe('queued');
+    await client.close();
+  });
+
+  it('素材上传拖到调用预算用完：先返回已登记的 task_id，后台继续上传、提交，不会重复建任务', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    running = await serve({
+      uploadTargets: withTempHost(async (file) => {
+        await gate;
+        return { url: `https://mock.cdn.invalid/uploads/${file.sha256}.mp4`, expiresAt: Date.now() + 3 * 3600_000, verified: { ok: true, note: 'mock' } };
+      }),
+    });
+    const r = running;
+    // 准备阶段（真实导入素材）照常用默认预算；进入提交的那一刻把预算收紧到已经用完，确定地走「上传卡住」这条路
+    const svc = r.container.services.tasks;
+    const start = svc.start.bind(svc);
+    vi.spyOn(svc, 'start').mockImplementation((...args) => {
+      setCallBudget({ callMs: 0, responseMs: 0 });
+      return start(...args);
+    });
+    const mp4 = join(r.dataDir, 'clip.mp4');
+    writeFileSync(mp4, Buffer.from(MOCK_MP4_BASE64, 'base64'));
+    const client = await v2Client(r);
+    try {
+      const res = text(await client.callTool({ name: 'create_video_task', arguments: { model_id: 'fake/video', mode: 'ref', prompt: 'continue Video 1', assets: { reference_video: [mp4] }, allow_public_upload: true } }));
+      expect(res.status).toBe('resolving_assets');
+      expect(res.task_id).toBeTruthy();
+      expect(res.next).toContain('不要重新提交');
+      release();
+      // 后台继续上传、提交：等任务进入 queued
+      await untilTask(r, (t) => t.id === res.task_id && t.status === 'queued');
+      expect(r.container.store.listTasks()).toHaveLength(1);
+    } finally {
+      release();
+      vi.restoreAllMocks();
+      await client.close();
+    }
+  }, 30_000);
+
+  it('上游拒收视频任务：默认等待也立即返回失败状态', async () => {
+    running = await serve();
+    const client = await v2Client(running);
+    const t0 = Date.now();
+    const res = text(await client.callTool({ name: 'create_video_task', arguments: { model_id: 'fake/video', prompt: 'MOCK_REJECT waves' } }));
+    expect(Date.now() - t0).toBeLessThan(5000);
+    expect(res.status).toBe('failed');
+    expect(res.next).toBeUndefined();
+    await client.close();
+  });
+
+  it('提交结果未知的任务不白等：get_task 立即返回并提示到控制台核对', async () => {
+    running = await serve();
+    const client = await v2Client(running);
+    const created = text(await client.callTool({ name: 'create_video_task', arguments: { model_id: 'fake/video', prompt: 'waves', wait_seconds: 0 } }));
+    running.container.store.updateTask(created.task_id, { status: 'submit_unknown' });
+    const t0 = Date.now();
+    const res = text(await client.callTool({ name: 'get_task', arguments: { task_id: created.task_id, wait_seconds: 540 } }));
+    expect(Date.now() - t0).toBeLessThan(5000);
+    expect(res.status).toBe('submit_unknown');
+    expect(res.next).toContain('控制台');
+    await client.close();
+  });
+
+  it('状态未知但调度器在重查：接着等，查回结果后返回；调度器不再跟进时立即返回', async () => {
+    running = await serve();
+    const r = running;
+    const client = await v2Client(r);
+    const created = text(await client.callTool({ name: 'create_video_task', arguments: { model_id: 'fake/video', prompt: 'waves', wait_seconds: 0 } }));
+    const id = created.task_id as string;
+    expect(r.container.services.scheduler.isTracking(id)).toBe(true);
+    r.container.store.updateTask(id, { status: 'unknown' });
+    let settled = false;
+    const pending = client.callTool({ name: 'get_task', arguments: { task_id: id, wait_seconds: 540 } });
+    void pending.then(() => (settled = true), () => (settled = true));
+    try {
+      await sleep(300);
+      expect(settled).toBe(false);
+      await r.container.services.scheduler.refresh(id);
+      const res = text(await pending);
+      expect(res.status).toBe('succeeded');
+      // 调度器不再跟进（例如超出查询窗口后）：unknown 立即返回并提示
+      r.container.services.scheduler.stop();
+      r.container.store.updateTask(id, { status: 'unknown' });
+      const t0 = Date.now();
+      const stalled = text(await client.callTool({ name: 'get_task', arguments: { task_id: id, wait_seconds: 540 } }));
+      expect(Date.now() - t0).toBeLessThan(5000);
+      expect(stalled.next).toContain('不再自动跟进');
+    } finally {
+      await client.close();
+      await pending.catch(() => undefined);
+    }
+  }, 30_000);
+
+  it('预算内素材上传失败：照常以 isError 返回，任务记为失败', async () => {
+    running = await serve({
+      uploadTargets: withTempHost(async () => {
+        throw new UploadError('托管站拒绝了上传');
+      }),
+    });
+    const mp4 = join(running.dataDir, 'clip.mp4');
+    writeFileSync(mp4, Buffer.from(MOCK_MP4_BASE64, 'base64'));
+    const client = await v2Client(running);
+    const res = await client.callTool({ name: 'create_video_task', arguments: { model_id: 'fake/video', mode: 'ref', prompt: 'continue Video 1', assets: { reference_video: [mp4] }, allow_public_upload: true } });
+    expect(res.isError).toBe(true);
+    expect(text(res).error).toContain('托管站拒绝了上传');
+    expect(running.container.store.listTasks()[0]!.status).toBe('failed');
     await client.close();
   });
 });

@@ -32,8 +32,8 @@ claude mcp remove ai-video --scope user 2>/dev/null; claude mcp add-json --scope
 | `list_models` | 列出模型、模式、素材槽 | 否 |
 | `get_model_schema` | 某模型的全部字段（类型 / 默认 / 范围 / 枚举）、素材规格、提示词规则 | 否 |
 | `preview_request` | 校验参数，返回问题列表、最终请求体、curl（Key 用环境变量占位）、说明、预估费用（含可信度）、是否需要公开上传。传本地文件路径时会把文件导入素材库（按内容去重） | 否 |
-| `generate_image` | 生成图片，最多等 `wait_seconds`（默认 50 秒）：完成就返回本地文件路径与缩略图，没完成先返回 `task_id`，再用 `get_task` 继续等 | **是** |
-| `create_video_task` | 创建视频任务，可选 `wait_seconds`（≤540）等待完成并推送进度 | **是** |
+| `generate_image` | 生成图片并等到出结果（`wait_seconds` 默认 540 秒，传 0 提交后就返回）：完成就返回本地文件路径与缩略图，等不到先返回 `task_id`，再用 `get_task` 继续等 | **是** |
+| `create_video_task` | 创建视频任务并等到出结果（`wait_seconds` 默认 540 秒，传 0 提交后就返回），期间推送进度 | **是** |
 | `get_task` | 查询任务与结果文件（含耗时 `duration_ms`、`usage`），可选 `wait_seconds`、`include_images` | 否 |
 | `list_tasks` | 本地任务历史 | 否 |
 | `cancel_task` | 取消排队中的任务，或删除已结束任务的云端记录 | 否 |
@@ -42,9 +42,15 @@ claude mcp remove ai-video --scope user 2>/dev/null; claude mcp add-json --scope
 
 ### 等待与超时
 
-- 出图常要 1–3 分钟，视频更久。`generate_image` 默认最多等 50 秒（留在常见的 60 秒请求超时之内），没出图就先返回 `task_id` 和 `next`；之后用 `get_task`（可带 `wait_seconds`）继续等。
-- **调用超时或断开不等于失败**：任务仍在平台上运行并计费。先用 `get_task` / `list_tasks` 查，不要重新提交，否则会重复计费。
-- `wait_seconds` 超过约 60 秒，需要客户端的工具超时足够长（按上面的接入命令登记就有 10 分钟）。等待期间如果客户端带了 `progressToken`，平台会推送进度通知。
+- 出图常要 1–3 分钟，视频更久。`generate_image`、`create_video_task` 默认等到出结果（最多 540 秒）；等不到就返回 `task_id` 和 `next`，之后用 `get_task`（可带 `wait_seconds`）继续等。传 `wait_seconds: 0` 不等生成，提交后就返回 `task_id`（本地素材仍要先处理完；视频会等上游收下任务）。
+- 整次调用（含素材处理、提交、缩略图）控制在约 9 分钟内，留在客户端 10 分钟超时之内：前面花掉的时间从等待里扣除；本地视频上传拖到预算用完时，也先返回 `task_id`，后台继续上传、提交；还没登记任务（例如导入本地文件太慢）就到了预算，则不提交、不计费，直接报错。
+- 提交结果未知（`submit_unknown`，例如提交时网络中断）的任务，以及平台已不再跟进的状态未知（`unknown`，例如超出查询窗口）的任务，不会再自动推进：工具立即返回，并提示到服务商控制台核对，不要重新提交。平台还在重查的 `unknown`（服务重启恢复或点了「立即重查」）会接着等重查结果。
+- **在 Claude Code 里可以边生成边对话**：主对话里运行超过 2 分钟的 MCP 工具调用会被自动转到后台（Claude Code v2.1.212 起，[官方文档](https://code.claude.com/docs/en/mcp#automatic-backgrounding-of-long-tool-calls)），你可以继续对话，生成完成后结果以通知的形式自动回到对话。门槛可以用环境变量 `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS`（毫秒，默认 120000）调整，对所有 MCP 服务器生效。
+  - 子代理里的调用不会转后台，所以让 agent 在主对话里直接调用生成工具。
+  - 后台调用在退出会话后就没了，但平台上的任务照常完成，用 `get_task` / `list_tasks` 取回。
+  - 终端里的 Claude Code 2.1.274 之前，Streamable HTTP 调用接近 5 分钟会被切断；2.1.283 之前，转后台后进度通知会丢失。建议 `claude update` 升级。
+- **调用超时或断开不等于失败**：已提交的任务不会被取消，可能仍在执行并计费。先用 `get_task` / `list_tasks` 查，不要重新提交，否则会重复计费。
+- 需要客户端的工具超时不短于 10 分钟（按上面的接入命令登记就是 10 分钟）。等待期间如果客户端带了 `progressToken`，平台会推送进度通知。
 - 平台对 MCP 请求一律用 SSE 流式响应（响应头立即发出、每 15 秒保活）。
 
 ### 官方提示词指南
