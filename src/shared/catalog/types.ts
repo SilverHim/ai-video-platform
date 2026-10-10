@@ -327,6 +327,8 @@ export interface ResolvedAsset {
   expiresAt?: number;
   /** 经哪个上传目标得到（uguu / tmpfiles / minimax-files …） */
   uploadedVia?: string;
+  /** 本地素材与这条历史结果是同一个文件，改用了它的原始链接 */
+  reusedFrom?: { taskId: string; index: number };
 }
 export type ResolvedAssets = Record<string, ResolvedAsset>;
 

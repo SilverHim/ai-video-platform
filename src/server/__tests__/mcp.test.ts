@@ -13,6 +13,7 @@ import { createApp } from '../app.js';
 import { ensureDataDirs, resolveConfig } from '../config.js';
 import { createContainer } from '../container.js';
 import { MOCK_MP4_BASE64 } from '../mock/media.js';
+import { makePng } from '../mock/png.js';
 import { setMockTiming } from '../mock/upstream.js';
 import { McpTokenStore } from '../mcp/token.js';
 import { DEFAULT_CALL_BUDGET, setCallBudget } from '../mcp/timing.js';
@@ -287,6 +288,25 @@ describe('MCP 工具（v2 客户端，2026-07-28 协议）', () => {
       await pending.catch(() => undefined);
     }
   }, 30_000);
+
+  it('BytePlus 本地图片：不带 allow_public_upload 时按 base64 内联并提示，带上后先传托管站只发链接', async () => {
+    running = await serve();
+    const png = join(running.dataDir, 'ref.png');
+    writeFileSync(png, makePng(32, 32, 7));
+    const client = await v2Client(running);
+    const args = { model_id: 'fake/img', prompt: 'a fox', assets: { image: [png] } };
+    const preview = text(await client.callTool({ name: 'preview_request', arguments: args }));
+    expect(preview.public_upload).toMatchObject({ required: false, files: [{ name: 'ref.png', optional: true }] });
+    const inline = text(await client.callTool({ name: 'generate_image', arguments: args }));
+    expect(inline.status).toBe('succeeded');
+    expect(inline.public_upload_hint).toContain('allow_public_upload');
+    expect(String(running.container.store.getTask(inline.task_id)!.request!.image)).toMatch(/^data:image\/png;base64,/);
+    const linked = text(await client.callTool({ name: 'generate_image', arguments: { ...args, prompt: 'a fox again', allow_public_upload: true } }));
+    expect(linked.status).toBe('succeeded');
+    expect(linked.public_upload_hint).toBeUndefined();
+    expect(String(running.container.store.getTask(linked.task_id)!.request!.image)).toMatch(/^https:\/\/mock\.cdn\.invalid\/uploads\//);
+    await client.close();
+  });
 
   it('预算内素材上传失败：照常以 isError 返回，任务记为失败', async () => {
     running = await serve({

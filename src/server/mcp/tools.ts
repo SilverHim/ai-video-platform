@@ -58,13 +58,18 @@ const pendingNext = (t: TaskRecord, what: string, stalled: boolean): string => {
       : '任务状态暂时未知，平台正在重查：用 get_task 稍后再查（可带 wait_seconds 继续等）。不要重新提交，以免重复计费';
   }
   if (t.status === 'resolving_assets') return `${what}任务已登记，素材还在上传、后台会继续提交：用 get_task 查询（可带 wait_seconds 继续等）。不要重新提交，以免重复计费`;
+  // 异步任务停在 submitting：请求还在发给服务商（本地素材内联成 base64 时请求体可能很大，上传要几分钟）
+  if (t.status === 'submitting' && t.kind === 'async') return `${what}任务还在提交：正在把请求发给服务商（本地素材内联较大时要几分钟），后台会继续：用 get_task 查询（可带 wait_seconds 继续等）。不要重新提交，以免重复计费`;
   return `${what}还在生成：用 get_task 查询（可带 wait_seconds 继续等）。不要重新提交，以免重复计费`;
 };
 
 const assetSpec = z
   .record(z.string(), z.array(z.string()))
   .optional()
-  .describe('素材，按槽位 id 分组。每项可以是：本地绝对路径、https:// 链接、asset://<素材ID>、mm_file://<file_id>、task:<任务id>#<结果序号>（复用历史结果）。槽位 id 见 get_model_schema');
+  .describe(
+    '素材，按槽位 id 分组。每项可以是：本地绝对路径、https:// 链接、asset://<素材ID>、mm_file://<file_id>、task:<任务id>#<结果序号>（复用历史结果）。槽位 id 见 get_model_schema。' +
+      'BytePlus 的本地图片 / 音频会以 base64 内联进请求体，几 MB 以上的大图上传可能要几分钟：能用 https 链接或 task:<id>#<n> 就优先用（本地文件就是以前的生成结果、原始链接还有效时，平台会自动改用原始链接）',
+  );
 
 const generateShape = {
   model_id: z.string().describe('模型 id，例如 byteplus/seedream-5-0-pro（用 list_models 查）'),
@@ -144,7 +149,19 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
    * （服务重启恢复、「立即重查」时会把 unknown 查回正常状态，那时要接着等）
    */
   const isStalled = (t: TaskRecord): boolean => t.status === 'submit_unknown' || (t.status === 'unknown' && !deps.services.scheduler.isTracking(t.id));
-  const nextHint = (t: TaskRecord, what: string): string => pendingNext(t, what, isStalled(t));
+  /** 提交请求正在上传：「已上传 x / y MB（约 z KB/s）」 */
+  const uploadText = (taskId: string): string | null => {
+    const u = svc.uploadProgress(taskId);
+    if (!u) return null;
+    const sec = Math.max(1, (Date.now() - u.startedAt) / 1000);
+    const mb = (n: number) => (n / 1048576).toFixed(1);
+    return u.sent >= u.total ? `请求体 ${mb(u.total)} MB 已发完，等服务商响应` : `已上传 ${mb(u.sent)} / ${mb(u.total)} MB（约 ${Math.round(u.sent / 1024 / sec)} KB/s）`;
+  };
+  const nextHint = (t: TaskRecord, what: string): string => {
+    const base = pendingNext(t, what, isStalled(t));
+    const up = t.status === 'submitting' ? uploadText(t.id) : null;
+    return up ? `${base}（${up}）` : base;
+  };
 
   /** 提交前的准备也受调用预算限制：超时返回 null，不再提交（后台导入完也不会提交、不计费） */
   const prepareWithin = (input: McpGenerateInput, provider: ProviderDef, model: ModelDef, startedAt: number): Promise<FormInput | null> =>
@@ -181,11 +198,14 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
       if (!t || isTerminal(t.status) || isStalled(t) || Date.now() >= deadline || ctx.mcpReq.signal.aborted) return t;
       if (token !== undefined) {
         tick += 1;
-        await ctx.mcpReq.notify({ method: 'notifications/progress', params: { progressToken: token, progress: tick, message: `任务 ${t.status}（已等待 ${Math.round((seconds * 1000 - (deadline - Date.now())) / 1000)} 秒）` } }).catch(() => undefined);
+        const up = t.status === 'submitting' ? uploadText(taskId) : null;
+        await ctx.mcpReq
+          .notify({ method: 'notifications/progress', params: { progressToken: token, progress: tick, message: `任务 ${t.status}${up ? `：${up}` : ''}（已等待 ${Math.round((seconds * 1000 - (deadline - Date.now())) / 1000)} 秒）` } })
+          .catch(() => undefined);
       }
       await new Promise<void>((resolve) => {
         const unsub = deps.services.events.subscribe((ev) => {
-          if (ev.type === 'task.updated' && ev.task.id === taskId) done();
+          if ((ev.type === 'task.updated' && ev.task.id === taskId) || (ev.type === 'task.progress' && ev.taskId === taskId)) done();
         });
         const timer = setTimeout(done, Math.min(10_000, Math.max(0, deadline - Date.now())));
         function done() {
@@ -309,12 +329,28 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
 
   const generateInput = z.object(generateShape);
 
+  const withConsent = generateInput.extend({
+    allow_public_upload: z
+      .boolean()
+      .optional()
+      .describe(
+        '同意把本地素材上传到公共临时托管站（任何人可凭链接下载，uguu 保留 3 小时 / tmpfiles 24 小时，不能删除）。BytePlus 的本地视频必须这样才能提交；本地图片设为 true 时也先上传、请求里只放链接，提交快得多，不设就按 base64 内联（几 MB 的图要几十秒到几分钟）',
+      ),
+  });
+
+  /** 没同意公开上传、又有本地图片要内联时，提示可以加快 */
+  const publicUploadHint = (form: FormInput, input: { allow_public_upload?: boolean | undefined; temp_host?: string | undefined }): { public_upload_hint?: string } => {
+    if (input.allow_public_upload) return {};
+    const n = svc.uploadPlan(form, consentOpts(input)).files.filter((f) => f.optional).length;
+    return n ? { public_upload_hint: `${n} 张本地图片按 base64 内联提交（请求体大、上传慢）。下次可以带 allow_public_upload: true，先传到公共临时托管站再提交（公开链接，保留 3 小时）` } : {};
+  };
+
   server.registerTool(
     'preview_request',
     {
       title: '预览请求',
-      description: '不提交、不计费：校验参数并返回问题列表、最终请求体、curl（Key 用环境变量占位）、预估费用，以及是否需要把本地视频上传到公共托管站。传本地文件路径时会把文件导入平台素材库（按内容去重），所以不标为只读。',
-      inputSchema: generateInput,
+      description: '不提交、不计费：校验参数并返回问题列表、最终请求体、curl（Key 用环境变量占位）、预估费用，以及哪些本地素材会上传到公共托管站（带 allow_public_upload 时按同意后的请求体预览）。传本地文件路径时会把文件导入平台素材库（按内容去重），所以不标为只读。',
+      inputSchema: withConsent,
       // 不是只读：本地路径的素材会导入素材库（幂等：同一文件只存一份）
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -324,7 +360,7 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
         const { provider, model } = resolveModel(input.model_id);
         const ep = await checkEndpoint(model, input.model_override);
         const form = await toForm(input as McpGenerateInput, provider, model, conv);
-        const p = svc.preview(form, input.temp_host ? { tempHost: input.temp_host } : {});
+        const p = svc.preview(form, consentOpts(input));
         return ok({
           ...(ep ? { endpoint: endpointSummary(ep) } : {}),
           can_submit: p.canSubmit,
@@ -342,17 +378,22 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
                 },
               }
             : {}),
-          public_upload: p.uploads.required ? { required: true, host: p.uploads.target.id, files: p.uploads.files, note: '提交时需要 allow_public_upload: true' } : { required: false },
+          public_upload: p.uploads.files.length
+            ? {
+                required: p.uploads.required,
+                host: p.uploads.target.id,
+                files: p.uploads.files.map((f) => ({ name: f.name, bytes: f.bytes, ...(f.optional ? { optional: true } : {}) })),
+                note: p.uploads.required
+                  ? '本地视频必须公开上传：提交时需要 allow_public_upload: true'
+                  : 'optional 的本地图片：带 allow_public_upload: true 会先传到公共托管站、请求里只放链接（快）；不带就按 base64 内联（慢）',
+              }
+            : { required: false },
         });
       } catch (err) {
         return toolError(err);
       }
     },
   );
-
-  const withConsent = generateInput.extend({
-    allow_public_upload: z.boolean().optional().describe('本地视频需要上传到公共临时托管站（任何人可凭链接下载）时必须显式设为 true'),
-  });
 
   server.registerTool(
     'generate_image',
@@ -384,8 +425,9 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
         const wait = waitWithin(input.wait_seconds ?? WAIT_DEFAULT_SECONDS, startedAt);
         const task = (wait > 0 ? await waitFor(id, wait, ctx as never) : null) ?? deps.store.getTask(id);
         if (!task) return fail(`任务不存在：${id}`);
-        if (!isTerminal(task.status)) return ok({ ...summarizeTask(task, outputsRoot), next: nextHint(task, '图片') });
-        return ok(summarizeTask(task, outputsRoot), await imageBlocks(task, outputsRoot, responseDeadline(startedAt)));
+        const hint = publicUploadHint(form, input);
+        if (!isTerminal(task.status)) return ok({ ...summarizeTask(task, outputsRoot), next: nextHint(task, '图片'), ...hint });
+        return ok({ ...summarizeTask(task, outputsRoot), ...hint }, await imageBlocks(task, outputsRoot, responseDeadline(startedAt)));
       } catch (err) {
         if (err instanceof TaskInputError && err.code === 'consent_required') return fail(`${err.i18n.zh}。如确认可以公开，请带 allow_public_upload: true 重试；或改用 https 链接 / asset:// / task:<id>#<n>。`);
         return toolError(err);
@@ -422,7 +464,7 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
         // 不等生成时也等上游收下任务（拿到排队状态或提交错误），同样不超出预算
         const task = (wait > 0 ? await waitFor(id, wait, ctx as never) : done ? await beforeDeadline(done, callDeadline(startedAt)) : null) ?? deps.store.getTask(id);
         if (!task) return fail(`任务不存在：${id}`);
-        return ok({ ...summarizeTask(task, outputsRoot), ...(isTerminal(task.status) ? {} : { next: nextHint(task, '视频') }) });
+        return ok({ ...summarizeTask(task, outputsRoot), ...(isTerminal(task.status) ? {} : { next: nextHint(task, '视频') }), ...publicUploadHint(form, input) });
       } catch (err) {
         if (err instanceof TaskInputError && err.code === 'consent_required') return fail(`${err.i18n.zh}。如确认可以公开，请带 allow_public_upload: true 重试；或改用 https 链接 / asset:// / task:<id>#<n>。`);
         return toolError(err);

@@ -3,6 +3,12 @@ import type { I18nText } from '../i18n.js';
 import { computeRefOrder, renderPrompt } from '../engine/refs.js';
 import { cloneJson, deepMerge, setPath, utf8Bytes, type JsonObject } from './wire.js';
 
+/**
+ * 请求体超过这么大就提示：本地素材以 base64 内联时，到服务商的单连接上行可能只有每秒几百 KB
+ * （实测到 BytePlus 新加坡约 230 KB/s），5 MB 已要半分钟左右
+ */
+export const LARGE_BODY_WARN_BYTES = 5_000_000;
+
 export interface BuiltRequest {
   providerId: string;
   modelId: string;
@@ -84,6 +90,15 @@ export function buildRequest(
       message: {
         zh: `请求体约 ${(bodyBytes / 1e6).toFixed(1)} MB，超过上限 ${(provider.limits.maxRequestBytes / 1e6).toFixed(0)} MB；大文件请改用 URL 或上传方式`,
         en: `Request body is about ${(bodyBytes / 1e6).toFixed(1)} MB, over the ${(provider.limits.maxRequestBytes / 1e6).toFixed(0)} MB limit; use URLs or uploads for large files`,
+      },
+    });
+  } else if (bodyBytes > LARGE_BODY_WARN_BYTES) {
+    issues.push({
+      id: 'body:large',
+      severity: 'warn',
+      message: {
+        zh: `请求体约 ${(bodyBytes / 1e6).toFixed(1)} MB（本地素材以 base64 内联），上传到服务商可能要几十秒到几分钟；大图建议改用 https 链接，或从历史结果复用`,
+        en: `Request body is about ${(bodyBytes / 1e6).toFixed(1)} MB (local assets inlined as base64); uploading it may take from tens of seconds to minutes. Prefer https links or reusing earlier results for large images`,
       },
     });
   }

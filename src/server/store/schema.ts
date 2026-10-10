@@ -104,4 +104,9 @@ export const MIGRATIONS: string[] = [
   `,
   // 任务从未结束进入终态的时间（耗时统计用；收藏、改备注会更新 updated_at，不能拿它算）
   `ALTER TABLE tasks ADD COLUMN finished_at INTEGER;`,
+  // 按文件哈希找历史结果：本地素材其实就是以前的生成结果时，复用它的原始链接
+  `CREATE INDEX IF NOT EXISTS idx_results_sha ON results(sha256);`,
+  // 提交请求的请求体字节数与耗时（从开始发送到收到响应）：排查「提交很慢」时用
+  `ALTER TABLE exchanges ADD COLUMN request_bytes INTEGER;`,
+  `ALTER TABLE exchanges ADD COLUMN duration_ms INTEGER;`,
 ];

@@ -69,7 +69,7 @@ npm run dev
 - 服务只监听 `127.0.0.1`，并校验 Host / Origin，防止其他网页访问
 - API Key 保存在数据目录的 `keys.json`（macOS 上权限 0600），不进浏览器存储、不进日志、不进 Git；也可以用环境变量 `ARK_API_KEY` / `MINIMAX_API_KEY`
 - 数据目录：开发时是项目下的 `data/`（任务数据库、结果文件 `outputs/`、素材、MCP 令牌），已在 `.gitignore` 中排除
-- BytePlus Seedance 的本地参考视频需要先上传到公共临时托管站（uguu.se 或 tmpfiles.org，链接公开），每次上传前都会弹窗确认；MCP 需要显式传 `allow_public_upload`
+- BytePlus Seedance 的本地参考视频需要先上传到公共临时托管站（uguu.se 或 tmpfiles.org，链接公开），每次上传前都会弹窗确认；MCP 需要显式传 `allow_public_upload`。BytePlus 的本地图片同意后也先上传（快得多），不同意就按 base64 内联照常提交
 
 ## 开发
 

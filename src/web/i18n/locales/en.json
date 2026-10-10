@@ -128,6 +128,8 @@
   },
   "history": {
     "detail": "Task details",
+    "requestSize": "request body {{size}}",
+    "duration": "took {{seconds}} s",
     "prompt": "Prompt",
     "request": "Request sent (redacted)",
     "raw": "Raw responses",
@@ -161,15 +163,18 @@
   "consent": {
     "title": "Upload to a public temporary host",
     "why": "Seedance only accepts reference videos by public URL. Local videos are uploaded to a third-party temporary host first, then the direct link is sent to BytePlus.",
+    "whyImages": "Local images can be inlined into the request as base64, but uploading to BytePlus is slow: a few MB can take from tens of seconds to minutes. Uploading them to a temporary host first and sending only links is much faster. If you prefer not to make them public, choose \"Submit without uploading\".",
     "host": "Host",
     "terms": "Terms",
     "public": "The link is public: anyone with it can download the file, and it cannot be deleted early.",
     "expire": "The link expires after about {{hours}} hours; tasks queued longer may fail (the task timeout has been shortened accordingly).",
     "noFace": "Do not upload real faces, private, confidential or copyrighted content; Seedance 2.x also rejects real-face reference videos.",
-    "alternatives": "To avoid public upload: use your own video URL, an asset:// ID, or reuse a video generated in the last 24 hours.",
+    "alternatives": "To avoid public upload: use your own https link, an asset:// ID, or reuse a result generated in the last 24 hours.",
     "tooBig": "Some files exceed this host's {{max}} limit; switch hosts or compress first.",
     "ack": "I understand the risks and agree to upload",
     "cancel": "Cancel",
+    "skip": "Submit without uploading (slower)",
+    "inlineTooLarge": "Inlining these images would exceed the request size limit, so they must be uploaded to the host first.",
     "confirm": "Agree and submit"
   },
   "mcp": {

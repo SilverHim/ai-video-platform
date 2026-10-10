@@ -255,14 +255,42 @@ export class Store {
     }));
   }
 
+  /**
+   * 按文件哈希找同一服务商、原始链接在 minExpiresAt 之后才过期的历史结果（剩余寿命最长的优先）。
+   * 用于本地素材其实就是以前的生成结果时，直接复用服务商自己的链接
+   */
+  findRemoteResultBySha(sha256: string, providerId: string, minExpiresAt: number): { taskId: string; index: number; remoteUrl: string; remoteExpiresAt: number } | null {
+    const row = this.db
+      .prepare(
+        `SELECT r.task_id, r.idx, r.remote_url, r.remote_expires_at FROM results r JOIN tasks t ON t.id = r.task_id
+         WHERE r.sha256 = $s AND t.provider_id = $p AND r.remote_url IS NOT NULL AND r.remote_expires_at > $min
+         ORDER BY r.remote_expires_at DESC LIMIT 1`,
+      )
+      .get({ s: sha256, p: providerId, min: minExpiresAt }) as Row | undefined;
+    return row ? { taskId: String(row.task_id), index: Number(row.idx), remoteUrl: String(row.remote_url), remoteExpiresAt: Number(row.remote_expires_at) } : null;
+  }
+
+  /** 某条历史结果文件的 sha256：与 resolver 取同一条（按 role、idx 排序后第一条有本地文件的） */
+  resultSha256(taskId: string, index: number): string | null {
+    const row = this.db.prepare('SELECT sha256 FROM results WHERE task_id = $t AND idx = $i AND path IS NOT NULL ORDER BY role, idx LIMIT 1').get({ t: taskId, i: index }) as Row | undefined;
+    return row?.sha256 ? String(row.sha256) : null;
+  }
+
+  /** 记下结果文件当前内容的 sha256（缺失或与文件不一致时由 resolver 写回） */
+  setResultSha256(resultId: string, sha256: string): void {
+    this.db.prepare('UPDATE results SET sha256 = $s WHERE id = $id').run({ s: sha256, id: resultId });
+  }
+
   /* ---------------- 交换记录 ---------------- */
 
   addExchange(e: Omit<ExchangeRecord, 'id'>, keepLast = 50): void {
-    this.db.prepare('INSERT INTO exchanges (task_id, at, kind, status, body) VALUES ($t, $at, $kind, $status, $body)').run({
+    this.db.prepare('INSERT INTO exchanges (task_id, at, kind, status, body, request_bytes, duration_ms) VALUES ($t, $at, $kind, $status, $body, $rb, $dur)').run({
       t: e.taskId,
       at: e.at,
       kind: e.kind,
       status: e.status,
+      rb: e.requestBytes ?? null,
+      dur: e.durationMs ?? null,
       body: e.body.length > 200_000 ? `${e.body.slice(0, 200_000)}…(已截断)` : e.body,
     });
     // 只保留第一条 submit 和最近 keepLast 条，避免轮询记录无限增长
@@ -276,7 +304,16 @@ export class Store {
 
   listExchanges(taskId: string): ExchangeRecord[] {
     const rows = this.db.prepare('SELECT * FROM exchanges WHERE task_id = $t ORDER BY id').all({ t: taskId }) as Row[];
-    return rows.map((r) => ({ id: Number(r.id), taskId: String(r.task_id), at: Number(r.at), kind: r.kind as ExchangeRecord['kind'], status: r.status === null ? null : Number(r.status), body: String(r.body) }));
+    return rows.map((r) => ({
+      id: Number(r.id),
+      taskId: String(r.task_id),
+      at: Number(r.at),
+      kind: r.kind as ExchangeRecord['kind'],
+      status: r.status === null ? null : Number(r.status),
+      body: String(r.body),
+      requestBytes: r.request_bytes == null ? null : Number(r.request_bytes),
+      durationMs: r.duration_ms == null ? null : Number(r.duration_ms),
+    }));
   }
 
   /* ---------------- 素材 ---------------- */

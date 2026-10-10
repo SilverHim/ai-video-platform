@@ -12,6 +12,7 @@ export const MCP_INSTRUCTIONS = [
   '写提示词前先用 get_model_schema 看模型的 prompt_guides（BytePlus 官方提示词指南要点）以及各模式的 prompt.hint、reference_syntax。Seedream 5.0 pro / flash 的局部改图用 <point> / <bbox> 坐标，规则见其指南。',
   '提交前用 preview_request 检查参数、请求体和预估费用（不提交、不计费）。',
   '出图常要 1–3 分钟，视频更久：generate_image / create_video_task 默认等到出结果（最多 540 秒；连同素材上传，整次调用在约 9 分钟内返回）。在 Claude Code 主对话里，超过 2 分钟的调用会自动转到后台，用户可以继续对话，结果完成后自动回到对话——所以请在主对话里直接调用这些工具，不要交给子代理（子代理里的调用不会转后台）。等不到会返回 task_id，再用 get_task（可带 wait_seconds）继续等。客户端超时或断开不会取消已提交的任务，它可能仍在执行并产生费用：先用 get_task / list_tasks 查，避免重复提交。',
+  'BytePlus 的本地图片 / 音频会以 base64 内联进请求体，上传到 BytePlus 较慢（几 MB 的图要几十秒到几分钟）：大图能用 https 链接或 task:<id>#<n>（复用历史结果）就优先用；本地文件就是以前的生成结果、原始链接还有效时，平台会自动改用原始链接。',
   'BytePlus 模型可以用 list_endpoints 找推理接入点（例如关闭了内容过滤的），再把 endpoint_id 填进 model_override。',
 ].join('\n');
 

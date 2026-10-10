@@ -3,6 +3,7 @@ import { FolderOpen, Star, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
+import { formatBytes } from '../../../shared/engine/media';
 import { PROVIDERS } from '../../../shared/providers/registry';
 import type { ExchangeRecord, TaskRecord } from '../../../shared/task/records';
 import { useText } from '../../i18n/useText';
@@ -54,6 +55,8 @@ function TaskDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <details key={e.id} className="mb-1 rounded-md bg-[var(--color-bg)] p-2 text-xs">
                 <summary className="cursor-pointer">
                   {e.kind} · {e.status ?? '—'} · {new Date(e.at).toLocaleTimeString()}
+                  {e.requestBytes != null ? ` · ${t('history.requestSize', { size: formatBytes(e.requestBytes) })}` : ''}
+                  {e.durationMs != null ? ` · ${t('history.duration', { seconds: (e.durationMs / 1000).toFixed(1) })}` : ''}
                 </summary>
                 <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-all">{e.body}</pre>
               </details>

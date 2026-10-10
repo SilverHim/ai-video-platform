@@ -6,6 +6,8 @@ import { MockDownloader } from '../mock/upstream.js';
 import { makePng } from '../mock/png.js';
 import { BASE, makeApp, WEB_HEADERS, json } from './helpers.js';
 import { fakeCatalog, fakeForm } from './fake-catalog.js';
+import { makeError } from '../../shared/task/errors.js';
+import { UpstreamError, type FetchLike } from '../upstream/http.js';
 
 let cleanup: () => void | Promise<void> = () => {};
 afterEach(async () => {
@@ -206,5 +208,32 @@ describe('/api/keys/:provider/test', () => {
   it('mock 上游下校验成功', async () => {
     const { post } = setup();
     expect(await json(await post('/api/keys/byteplus/test', {}))).toMatchObject({ ok: true, status: 200 });
+  });
+});
+
+describe('提交请求中断：区分「没发完」和「结果未知」', () => {
+  const failingFetch = (requestIncomplete: boolean): FetchLike => async () => {
+    throw new UpstreamError(makeError({ providerId: 'byteplus', category: 'timeout', code: requestIncomplete ? 'UPLOAD_STALLED' : 'RESPONSE_TIMEOUT', message: 'x' }), requestIncomplete);
+  };
+  const submitVideo = async (requestIncomplete: boolean) => {
+    const made = makeApp({ catalog: fakeCatalog, fetchImpl: failingFetch(requestIncomplete) });
+    cleanup = made.cleanup;
+    const res = await made.app.request(`${BASE}/api/tasks`, { method: 'POST', headers: { ...WEB_HEADERS, 'content-type': 'application/json' }, body: JSON.stringify({ form: fakeForm({ modelId: 'fake/video', modeId: 't2v', prompt: 'waves' }) }) });
+    return { made, task: (await json(res)).task as TaskRecord };
+  };
+
+  it('请求体没发完：记为失败、可重试（服务商不可能建了任务）', async () => {
+    const { made, task } = await submitVideo(true);
+    expect(task.status).toBe('failed');
+    expect(task.error?.retryable).toBe(true);
+    expect(task.error?.message).toContain('可以直接重新提交');
+    const ex = made.store.listExchanges(task.id).find((e) => e.kind === 'error')!;
+    expect(ex.requestBytes).toBeGreaterThan(0);
+    expect(ex.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('请求发完却没拿到响应：仍记为结果未知', async () => {
+    const { task } = await submitVideo(false);
+    expect(task.status).toBe('submit_unknown');
   });
 });

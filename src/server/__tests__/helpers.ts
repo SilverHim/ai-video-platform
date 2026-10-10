@@ -7,6 +7,7 @@ import { createContainer } from '../container.js';
 import type { Downloader } from '../capture/downloader.js';
 import type { FetchLike } from '../upstream/http.js';
 import type { Catalog } from '../tasks/task-service.js';
+import type { UploadTargets } from '../upload-targets/registry.js';
 
 export const PORT = 8787;
 export const BASE = `http://127.0.0.1:${PORT}`;
@@ -25,12 +26,14 @@ export interface MakeAppOptions extends Partial<ServerOptions> {
   controlFetch?: FetchLike;
   downloader?: Downloader;
   catalog?: Catalog;
+  /** 上传目标（默认 mock 托管站） */
+  uploadTargets?: UploadTargets;
 }
 
 /** 测试用应用：默认 mock 上游，环境变量隔离 */
 export function makeApp(opts: MakeAppOptions = {}, env: NodeJS.ProcessEnv = {}) {
   const tmp = tempDir();
-  const { env: optEnv, fetchImpl, controlFetch, downloader, catalog, ...serverOpts } = opts;
+  const { env: optEnv, fetchImpl, controlFetch, downloader, catalog, uploadTargets, ...serverOpts } = opts;
   const config = resolveConfig({ dataDir: tmp.dir, port: PORT, mock: true, ...serverOpts });
   ensureDataDirs(config.paths);
   const container = createContainer(config, {
@@ -39,6 +42,7 @@ export function makeApp(opts: MakeAppOptions = {}, env: NodeJS.ProcessEnv = {}) 
     ...(controlFetch ? { controlFetch } : {}),
     ...(downloader ? { downloader } : {}),
     ...(catalog ? { catalog } : {}),
+    ...(uploadTargets ? { uploadTargets } : {}),
   });
   const app = createApp({ config, keystore: container.keystore, store: container.store, services: container.services, version: 'test', getPort: () => PORT, quiet: true, ...(catalog ? { catalog } : {}) });
   return {

@@ -59,11 +59,14 @@ export function StudioPage() {
   const { model, mode } = evaluated.ctx;
   const userModes = model.modes.filter((m) => m.entry !== 'derived');
   const counted = countPrompt(form.prompt.replace(/\{\{ref:[^}]+\}\}/g, ' Image 1 '));
-  const issues = [...evaluated.issues, ...(preview?.issues.filter((i) => i.id.startsWith('guard:') || i.id === 'body:too-large') ?? [])];
-  const canSubmit = evaluated.canSubmit && (preview ? preview.canSubmit : true) && !submitting;
+  const issues = [...evaluated.issues, ...(preview?.issues.filter((i) => i.id.startsWith('guard:') || i.id === 'body:too-large' || i.id === 'body:large') ?? [])];
+  // 预览不带同意：本地图片按 base64 估算。只因请求体过大不能提交、而这些图片可以改为公开上传时，仍允许进入上传确认（只是不能选按原样提交）
+  const inlineTooLarge = Boolean(preview && !preview.canSubmit && preview.issues.filter((i) => i.severity === 'error').every((i) => i.id === 'body:too-large') && preview.uploads.files.some((f) => f.optional));
+  const canSubmit = evaluated.canSubmit && (preview ? preview.canSubmit || inlineTooLarge : true) && !submitting;
 
-  const submit = async (consent = false) => {
-    if (!consent && preview?.uploads.required) {
+  /** consent：同意公开上传；skipUpload：只有本地图片时选了「不上传，按原样提交」 */
+  const submit = async (consent = false, skipUpload = false) => {
+    if (!consent && !skipUpload && preview?.uploads.files.length) {
       setConsentOpen(true);
       return;
     }
@@ -178,8 +181,16 @@ export function StudioPage() {
           </div>
         </div>
 
-        {consentOpen && preview?.uploads.required ? (
-          <ConsentDialog info={preview.uploads} tempHost={tempHost} onTempHost={setTempHost} onCancel={() => setConsentOpen(false)} onConfirm={() => void submit(true)} />
+        {consentOpen && preview?.uploads.files.length ? (
+          <ConsentDialog
+            info={preview.uploads}
+            tempHost={tempHost}
+            onTempHost={setTempHost}
+            onCancel={() => setConsentOpen(false)}
+            onConfirm={() => void submit(true)}
+            onSkip={() => void submit(false, true)}
+            inlineTooLarge={inlineTooLarge}
+          />
         ) : null}
         <div className="space-y-3 lg:overflow-y-auto">
           <Segmented

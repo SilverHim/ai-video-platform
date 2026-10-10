@@ -31,7 +31,7 @@ claude mcp remove ai-video --scope user 2>/dev/null; claude mcp add-json --scope
 |---|---|---|
 | `list_models` | 列出模型、模式、素材槽 | 否 |
 | `get_model_schema` | 某模型的全部字段（类型 / 默认 / 范围 / 枚举）、素材规格、提示词规则 | 否 |
-| `preview_request` | 校验参数，返回问题列表、最终请求体、curl（Key 用环境变量占位）、说明、预估费用（含可信度）、是否需要公开上传。传本地文件路径时会把文件导入素材库（按内容去重） | 否 |
+| `preview_request` | 校验参数，返回问题列表、最终请求体、curl（Key 用环境变量占位）、说明、预估费用（含可信度）、哪些本地素材会公开上传（可带 `allow_public_upload` 按同意后的请求体预览）。传本地文件路径时会把文件导入素材库（按内容去重） | 否 |
 | `generate_image` | 生成图片并等到出结果（`wait_seconds` 默认 540 秒，传 0 提交后就返回）：完成就返回本地文件路径与缩略图，等不到先返回 `task_id`，再用 `get_task` 继续等 | **是** |
 | `create_video_task` | 创建视频任务并等到出结果（`wait_seconds` 默认 540 秒，传 0 提交后就返回），期间推送进度 | **是** |
 | `get_task` | 查询任务与结果文件（含耗时 `duration_ms`、`usage`），可选 `wait_seconds`、`include_images` | 否 |
@@ -67,7 +67,12 @@ claude mcp remove ai-video --scope user 2>/dev/null; claude mcp add-json --scope
 - `mode` 不填时用默认模式（`get_model_schema` 的 `modes` 里标了 `default: true` 的那个）。
 - `assets` 按槽位 id 分组，每项可以是：本地绝对路径、`https://` 链接、`asset://<素材ID>`、`mm_file://<file_id>`、`task:<任务id>#<结果序号>`（复用历史结果）。
 - 提示词里引用素材按 `get_model_schema` 给出的写法（如 `Image 1`、`@Video 1`）。
-- BytePlus Seedance 的本地参考视频需要先上传到公共临时托管站（默认 uguu.se，3 小时；可选 tmpfiles.org，24 小时），链接是公开的，所以必须显式传 `allow_public_upload: true`，否则工具返回错误说明。
+- **公开上传（`allow_public_upload: true`）**：BytePlus 的本地素材先上传到公共临时托管站（默认 uguu.se，保留 3 小时；可选 tmpfiles.org，24 小时），请求里只放链接。链接是公开的、不能删除，所以要显式同意。
+  - 本地参考视频：Seedance 只接受链接，必须同意才能提交，否则工具返回错误说明。
+  - 本地图片（Seedance / Seedream）：同意时也先上传；不同意就按 base64 内联进请求体照常提交，返回里带 `public_upload_hint` 提示。到 BytePlus 的单连接上行很慢（实测约 120–230 KB/s），两张 7 MB 的 PNG 内联要 1.5–7 分钟；传到 uguu 并行约 26 秒，3 小时内重复提交同一文件直接复用链接。
+  - 多个文件并行上传；同一个文件只传一次。`preview_request` 的 `public_upload.files` 里 `optional: true` 的是图片（可选上传）。
+  - 本地文件就是以前的生成结果（文件哈希相同）、原始链接还剩 3 小时以上时，直接改用服务商自己的链接，不内联也不公开上传。
+- 请求体超过 5 MB 时 `preview_request` 给出 `body:large` 警告；超过 1 MB 的请求体分片发送并改走 HTTP/1.1（实测到 BytePlus 比 HTTP/2 快约 1.5–2 倍），提交期间进度通知里报「已上传 x / y MB」。上传停滞超过 60 秒就中止：请求没发完的任务记为失败、可以直接重新提交（服务商不可能收到完整请求）；发完后没等到响应才记为提交结果未知。
 
 ### 推理接入点（BytePlus）与 Key 选择
 

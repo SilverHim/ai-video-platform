@@ -49,13 +49,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export interface ConsentInfo {
+  /** 有必须公开上传才能提交的素材（本地视频） */
   required: boolean;
   target: { id: string; label: I18nText; ttlMs: number; maxBytes: number; homepage?: string };
-  files: { name: string; bytes: number | null }[];
+  /** optional：本地图片，不同意时按 base64 内联照常提交 */
+  files: { name: string; bytes: number | null; optional?: boolean }[];
 }
 
 export interface SubmitOpts {
-  /** 已同意把本地视频上传到公共临时托管站 */
+  /** 已同意把本地素材（视频、BytePlus 的图片）上传到公共临时托管站 */
   consent?: boolean;
   /** uguu / tmpfiles */
   tempHost?: string;

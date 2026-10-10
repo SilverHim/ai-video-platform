@@ -67,6 +67,10 @@ export interface ExchangeRecord {
   status: number | null;
   /** 脱敏、截断后的响应文本 */
   body: string;
+  /** 提交请求的请求体字节数（只有 submit / error 记录） */
+  requestBytes?: number | null;
+  /** 从开始发送请求到收到响应（或出错）的毫秒数 */
+  durationMs?: number | null;
 }
 
 export interface TaskListQuery {
@@ -104,4 +108,6 @@ export interface TemplateRecord {
 export type ServerEvent =
   | { type: 'task.updated'; task: TaskRecord }
   | { type: 'task.deleted'; taskId: string }
+  /** 提交请求的上传进度（大请求体分片发送时，最多每秒一条） */
+  | { type: 'task.progress'; taskId: string; sent: number; total: number }
   | { type: 'ping'; at: number };

@@ -149,6 +149,15 @@ describe('buildRequest', () => {
     expect(b.bodyBytes).toBeGreaterThan(5000);
     expect(b.issues.map((i) => i.id)).toContain('body:too-large');
   });
+
+  it('请求体没超限但很大（本地素材内联）：给出 warn 提示，不阻止提交', () => {
+    const roomy = { ...demoProvider, limits: { ...demoProvider.limits, maxRequestBytes: 64_000_000 } };
+    const at = (bytes: number) => buildRequest(roomy, demoModel, ev({ slots, prompt: 'x {{ref:a1}}' }), { a1: { wire: 'data:image/png;base64,…', preview: '…', bytes } }, 'preview').issues;
+    const large = at(6_000_000).find((i) => i.id === 'body:large');
+    expect(large?.severity).toBe('warn');
+    expect(at(6_000_000).some((i) => i.id === 'body:too-large')).toBe(false);
+    expect(at(1000).some((i) => i.id === 'body:large')).toBe(false);
+  });
 });
 
 describe('尺寸自动回退', () => {

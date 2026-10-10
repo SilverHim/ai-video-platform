@@ -116,7 +116,13 @@ export class TaskService {
 
   preview(form: FormInput, opts: SubmitOptions = {}): PreviewResult {
     const { provider, model, evaluated } = this.prepare(form);
-    const built = buildRequest(provider, model, evaluated, this.d.resolver.preview(evaluated, provider.id, opts.tempHost), 'preview');
+    const assets = this.d.resolver.preview(evaluated, provider.id, opts.tempHost, Boolean(opts.publicUploadConsent));
+    const built = buildRequest(provider, model, evaluated, assets, 'preview');
+    noteReusedResults(built, assets);
+    const uploads = this.d.resolver.consentInfo(evaluated, provider.id, opts.tempHost);
+    noteInlinedForLackOfConsent(built, uploads, opts);
+    // 与提交时一致：按已知的链接寿命（复用的原始链接、上传目标的保留时长）缩短执行超时
+    adjustExpiryForUploads(built, assets, this.now());
     const ep = provider.endpoints[built.endpointId]!;
     const url = resolveUrl(provider, ep, defaultBaseUrlId(provider));
     const body = sanitizeForPreview(built.body);
@@ -128,7 +134,7 @@ export class TaskService {
     const keyEnvVar = credential?.kind === 'subscription' ? 'MINIMAX_SUBSCRIPTION_KEY' : (KEY_ENV_BY_PROVIDER[provider.id] ?? 'API_KEY');
     return {
       canSubmit: !issues.some((i) => i.severity === 'error'),
-      uploads: this.d.resolver.consentInfo(evaluated, provider.id, opts.tempHost),
+      uploads,
       issues,
       request: { method: built.method, url, body, bodyBytes: built.bodyBytes, stream: built.stream, endpointId: built.endpointId },
       curl: toCurl({ method: built.method, url, body, stream: built.stream, keyEnvVar }).command,
@@ -154,6 +160,12 @@ export class TaskService {
     return this.credentials(provider, pref).key;
   }
 
+  /** 这次提交会公开上传哪些素材（不读文件）：MCP 用来提示「同意公开上传可以加快提交」 */
+  uploadPlan(form: FormInput, opts: SubmitOptions = {}): ConsentInfo {
+    const p = this.prepare(form);
+    return this.d.resolver.consentInfo(p.evaluated, p.provider.id, opts.tempHost);
+  }
+
   /** 第一阶段：校验、建任务记录、解析素材、构建请求 */
   private async begin(form: FormInput, origin: TaskOrigin, opts: SubmitOptions = {}): Promise<{ p: Prepared; task: TaskRecord; built: BuiltRequest; apiKey: string }> {
     const p = this.prepare(form);
@@ -164,7 +176,7 @@ export class TaskService {
     }
     const consent = this.d.resolver.consentInfo(p.evaluated, p.provider.id, opts.tempHost);
     if (consent.required && !opts.publicUploadConsent) {
-      throw new TaskInputError('consent_required', { zh: `有 ${consent.files.length} 个本地视频需要上传到 ${consent.target.label.zh}（任何拿到链接的人都能下载），请确认后再提交`, en: `${consent.files.length} local video(s) must be uploaded to ${consent.target.label.en} (anyone with the link can download); confirm first` }, [], 428);
+      throw new TaskInputError('consent_required', { zh: `有 ${consent.files.filter((f) => !f.optional).length} 个本地视频需要上传到 ${consent.target.label.zh}（任何拿到链接的人都能下载），请确认后再提交`, en: `${consent.files.filter((f) => !f.optional).length} local video(s) must be uploaded to ${consent.target.label.en} (anyone with the link can download); confirm first` }, [], 428);
     }
     const now = this.now();
     const task: TaskRecord = {
@@ -211,6 +223,8 @@ export class TaskService {
         providerKey: apiKey,
       });
       built = buildRequest(p.provider, p.model, p.evaluated, resolved, 'send');
+      noteReusedResults(built, resolved);
+      noteInlinedForLackOfConsent(built, consent, opts);
       adjustExpiryForUploads(built, resolved, this.now());
     } catch (err) {
       const e = err instanceof ResolveError ? err.i18n : { zh: String(err), en: String(err) };
@@ -297,6 +311,14 @@ export class TaskService {
     return stuck.length;
   }
 
+  /** 正在上传的提交请求（只在内存里）：MCP 等待时报「已上传 x / y MB」 */
+  private readonly uploads = new Map<string, { sent: number; total: number; startedAt: number; lastEmit: number }>();
+
+  uploadProgress(taskId: string): { sent: number; total: number; startedAt: number } | null {
+    const u = this.uploads.get(taskId);
+    return u ? { sent: u.sent, total: u.total, startedAt: u.startedAt } : null;
+  }
+
   /** start 发起、还没结束的提交（从入口算起，含解析素材阶段） */
   private readonly inflight = new Set<Promise<void>>();
   /** 已进入关闭流程：不再接受 start */
@@ -313,18 +335,37 @@ export class TaskService {
 
   private async execute(p: Prepared, task: TaskRecord, built: BuiltRequest, apiKey: string): Promise<TaskRecord> {
     let res: UpstreamResponse;
+    const bodyText = JSON.stringify(built.body);
+    // 记下请求体大小与发送到响应的耗时：本地素材内联成 base64 时请求体可能有几十 MB，上传要几分钟
+    const sent = { requestBytes: Buffer.byteLength(bodyText), startedAt: this.now() };
+    const timing = () => ({ requestBytes: sent.requestBytes, durationMs: this.now() - sent.startedAt });
+    const onUploadProgress = (bytes: number, total: number) => {
+      const now = this.now();
+      const cur = this.uploads.get(task.id) ?? { sent: 0, total, startedAt: sent.startedAt, lastEmit: 0 };
+      cur.sent = bytes;
+      cur.total = total;
+      this.uploads.set(task.id, cur);
+      if (bytes < total && now - cur.lastEmit < 1000) return;
+      cur.lastEmit = now;
+      this.d.events.emit({ type: 'task.progress', taskId: task.id, sent: bytes, total });
+    };
     try {
-      res = await this.d.upstream.call({ provider: p.provider, endpointId: built.endpointId, baseUrlId: task.baseUrlId, apiKey, bodyText: JSON.stringify(built.body) });
+      res = await this.d.upstream.call({ provider: p.provider, endpointId: built.endpointId, baseUrlId: task.baseUrlId, apiKey, bodyText, onUploadProgress });
     } catch (err) {
-      const e = err instanceof UpstreamError ? err.error : makeError({ providerId: p.provider.id, category: 'network', code: 'NETWORK', message: String(err) });
-      // 创建类请求不重试：网络中断时结果未知
-      if (p.model.kind === 'async') this.d.store.updateTask(task.id, { status: 'submit_unknown', error: e });
+      const incomplete = err instanceof UpstreamError && err.requestIncomplete;
+      const raw = err instanceof UpstreamError ? err.error : makeError({ providerId: p.provider.id, category: 'network', code: 'NETWORK', message: String(err) });
+      // 请求体还没发完就断了：服务商不可能收到完整请求，不会建任务，可以放心重试
+      const e = incomplete ? { ...raw, message: `${raw.message}。请求没有发完，服务商不会建任务，可以直接重新提交`, retryable: true } : raw;
+      // 创建类请求不重试：请求已经发完、却没拿到响应时，上游可能已经建好任务，结果未知
+      if (p.model.kind === 'async' && !incomplete) this.d.store.updateTask(task.id, { status: 'submit_unknown', error: e });
       else this.d.store.updateTask(task.id, { status: 'failed', error: e });
-      this.d.store.addExchange({ taskId: task.id, at: this.now(), kind: 'error', status: null, body: e.message });
+      this.d.store.addExchange({ taskId: task.id, at: this.now(), kind: 'error', status: null, body: e.message, ...timing() });
       this.emit(task.id);
       return this.d.store.getTask(task.id)!;
+    } finally {
+      this.uploads.delete(task.id);
     }
-    this.d.store.addExchange({ taskId: task.id, at: this.now(), kind: 'submit', status: res.status, body: truncateBody(res.bodyText) });
+    this.d.store.addExchange({ taskId: task.id, at: this.now(), kind: 'submit', status: res.status, body: truncateBody(res.bodyText), ...timing() });
     return this.handleSubmitResponse(p, task, res);
   }
 
@@ -595,6 +636,26 @@ export class TaskService {
  * 用了有寿命的托管直链时（例如 uguu 3 小时），把 execution_expires_after 缩到"直链剩余寿命 − 1 小时"，
  * 避免任务排队太久、开始执行时素材链接已失效（下限 3600 秒）。
  */
+/** 没同意公开上传：可选上传的本地图片按 base64 内联了，提示同意后可以加快 */
+export function noteInlinedForLackOfConsent(built: BuiltRequest, uploads: ConsentInfo, opts: SubmitOptions): void {
+  const n = uploads.files.filter((f) => f.optional).length;
+  if (!n || opts.publicUploadConsent) return;
+  built.notes.push({
+    zh: `${n} 张本地图片按 base64 内联进请求体（没有同意公开上传）。同意公开上传后会先传到 ${uploads.target.label.zh}、请求里只放链接，提交快得多`,
+    en: `${n} local image(s) are inlined as base64 (public upload not consented). With consent they are uploaded to ${uploads.target.label.en} first and only links are sent, which is much faster`,
+  });
+}
+
+/** 本地素材改用了历史结果的原始链接：在说明里写清楚 */
+export function noteReusedResults(built: BuiltRequest, resolved: ResolvedAssets): void {
+  const refs = Object.values(resolved).flatMap((r) => (r.reusedFrom ? [`task:${r.reusedFrom.taskId}#${r.reusedFrom.index}`] : []));
+  if (!refs.length) return;
+  built.notes.push({
+    zh: `${refs.length} 个本地素材就是以前的生成结果，已改用服务商的原始链接（${refs.join('、')}），不再内联或上传`,
+    en: `${refs.length} local asset(s) are earlier results; using the provider's original links instead (${refs.join(', ')})`,
+  });
+}
+
 export function adjustExpiryForUploads(built: BuiltRequest, resolved: ResolvedAssets, now: number): void {
   if (!('execution_expires_after' in built.body)) return;
   const expiries = Object.values(resolved).map((r) => r.expiresAt).filter((x): x is number => typeof x === 'number' && x > now);
