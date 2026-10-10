@@ -25,6 +25,24 @@ import type { Store } from './store/store.js';
 import type { Scheduler } from './tasks/scheduler.js';
 import type { TaskService } from './tasks/task-service.js';
 
+/** 接入命令里给 Claude Code 设的单服务器超时（毫秒） */
+export const MCP_CLIENT_TIMEOUT_MS = 600_000;
+
+/**
+ * 设置页的接入命令（按服务所在系统给出：Windows 用 PowerShell 写法，其余用 sh 写法）。
+ * 用 add-json 才能带上 timeout：Claude Code 对 HTTP 服务器默认每个请求只等 60 秒（到第一个响应字节），
+ * 出图常要 1–3 分钟；timeout 同时提高这个计时器（与 docs/agent-setup.md 同样写法）
+ */
+export function mcpConnectCommand(url: string, token: string, platform: NodeJS.Platform = process.platform): string {
+  const entry = JSON.stringify({ type: 'http', url, headers: { Authorization: `Bearer ${token}` }, timeout: MCP_CLIENT_TIMEOUT_MS });
+  if (platform === 'win32') {
+    // 在脚本块里统一按 Legacy 方式给命令行程序传参并转义 JSON 的双引号：5.1 默认如此，
+    // 7.3+ 对 .cmd / .bat 启动器也会回到 Legacy；只影响这个脚本块，不改用户会话
+    return `& { $PSNativeCommandArgumentPassing = 'Legacy'; claude mcp remove ai-video --scope user 2>$null | Out-Null; claude mcp add-json --scope user ai-video ('${entry}' -replace '"', '\\"') }`;
+  }
+  return `claude mcp remove ai-video --scope user 2>/dev/null; claude mcp add-json --scope user ai-video '${entry}'`;
+}
+
 export interface Services {
   tasks: TaskService;
   assets: AssetStore;
@@ -76,7 +94,7 @@ export function createApp(deps: AppDeps) {
   app.get('/api/mcp', (c) => {
     const url = `http://127.0.0.1:${deps.getPort()}/mcp`;
     const token = mcpToken.get();
-    return c.json({ url, token, command: `claude mcp add --transport http --scope user ai-video ${url} --header "Authorization: Bearer ${token}"` });
+    return c.json({ url, token, command: mcpConnectCommand(url, token) });
   });
   app.post('/api/mcp/rotate', (c) => c.json({ token: mcpToken.rotate() }));
   app.all('/api/*', (c) => c.json({ error: { code: 'not_found', message: '接口不存在' } }, 404));

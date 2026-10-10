@@ -18,7 +18,14 @@ export function mcpRoutes(deps: AppDeps & { mcpToken: McpTokenStore; catalog?: C
       registerTools(server, deps, catalog);
       return server;
     },
-    { legacy: 'stateless', maxRequestBodySize: 8 * 1024 * 1024, onerror: (e) => console.error('[mcp]', e.message) },
+    {
+      legacy: 'stateless',
+      // 新协议（2026-07-28）也一律用 SSE 流式响应：响应头立即发出、每 15 秒保活，进度通知能实时送达。
+      // 默认 'auto' 在工具出结果前不发任何字节，长时间的工具会撞上客户端「等第一个字节」的超时（Claude Code 默认 60 秒）
+      responseMode: 'sse',
+      maxRequestBodySize: 8 * 1024 * 1024,
+      onerror: (e) => console.error('[mcp]', e.message),
+    },
   );
   const app = new Hono();
   app.all('/', async (c) => {

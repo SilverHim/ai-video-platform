@@ -14,6 +14,7 @@ import { SseParser, type SseEvent } from '../../shared/sse/parse.js';
 import { makeError, safeJson, type NormalizedError } from '../../shared/task/errors.js';
 import type { TaskOrigin, TaskRecord } from '../../shared/task/records.js';
 import type { PartialFailure, ResultAsset } from '../../shared/task/results.js';
+import { isTerminal } from '../../shared/task/status.js';
 import { ResolveError, type AssetResolver, type ConsentInfo } from '../assets/resolver.js';
 import type { CaptureService } from '../capture/capture.js';
 import type { EventBus } from '../events.js';
@@ -228,6 +229,83 @@ export class TaskService {
   async submit(form: FormInput, origin: TaskOrigin, opts: SubmitOptions = {}): Promise<TaskRecord> {
     const { p, task, built, apiKey } = await this.begin(form, origin, opts);
     return this.execute(p, task, built, apiKey);
+  }
+
+  /**
+   * 提交但不等上游完成：校验、建好任务就返回，上游调用与落盘在后台继续（done 在完成时兑现）。
+   * MCP 的 generate_image 用它限定等待时长；后台出意外时把任务记为失败，done 不会拒绝
+   */
+  async start(form: FormInput, origin: TaskOrigin, opts: SubmitOptions = {}): Promise<{ task: TaskRecord; done: Promise<TaskRecord> }> {
+    if (this.closing) throw new TaskInputError('shutting_down', { zh: '服务正在关闭，请稍后再提交', en: 'The server is shutting down; submit again later' }, [], 503);
+    // 从入口就登记：关闭时连还在解析素材（begin）的提交也要等
+    let settle!: () => void;
+    const op = new Promise<void>((resolve) => (settle = resolve));
+    this.inflight.add(op);
+    const finish = () => {
+      settle();
+      this.inflight.delete(op);
+    };
+    // 交给后台之前的任何失败（解析素材、读快照）都要撤销登记，否则 drain 只能等到超时
+    let snapshot: TaskRecord;
+    let started: Promise<TaskRecord>;
+    let pTask: { providerId: string; id: string };
+    try {
+      const { p, task, built, apiKey } = await this.begin(form, origin, opts);
+      snapshot = this.d.store.getTask(task.id) ?? task;
+      pTask = { providerId: p.provider.id, id: task.id };
+      started = this.execute(p, task, built, apiKey);
+    } catch (err) {
+      finish();
+      throw err;
+    }
+    const task = pTask;
+    const done = started.catch((err: unknown) => {
+      // 兜底本身也可能失败（例如服务关闭时数据库已关）：只记日志，不再抛出
+      try {
+        const current = this.d.store.getTask(task.id);
+        if (current && !isTerminal(current.status)) this.fail(task.id, makeError({ providerId: task.providerId, category: 'unknown', code: 'INTERNAL', message: String(err) }));
+        return this.d.store.getTask(task.id) ?? snapshot;
+      } catch (inner) {
+        console.error(`[tasks] 后台任务 ${task.id} 出错且无法记录：`, err, inner);
+        return snapshot;
+      }
+    });
+    void done.finally(finish);
+    return { task: snapshot, done };
+  }
+
+  /**
+   * 服务启动时调用：把上次关闭时被打断的任务标成 submit_unknown（上游可能已生成并计费），
+   * 避免它们永远停在「提交中」，也提醒不要直接重复提交
+   */
+  recoverInterrupted(): number {
+    const stuck = this.d.store.listInterrupted();
+    for (const t of stuck) {
+      this.d.store.updateTask(t.id, {
+        status: 'submit_unknown',
+        error: makeError({
+          providerId: t.providerId,
+          category: 'unknown',
+          code: 'INTERRUPTED',
+          message: '服务关闭时任务还在进行，结果未知：上游可能已经生成并计费。请到服务商控制台核对，确认前不要直接重复提交',
+        }),
+      });
+    }
+    return stuck.length;
+  }
+
+  /** start 发起、还没结束的提交（从入口算起，含解析素材阶段） */
+  private readonly inflight = new Set<Promise<void>>();
+  /** 已进入关闭流程：不再接受 start */
+  private closing = false;
+
+  /** 关闭前调用：不再接受新的 start，并等已有的提交收尾，最多等 timeoutMs；超时的任务在下次启动时按中断处理 */
+  async drain(timeoutMs: number): Promise<void> {
+    this.closing = true;
+    if (this.inflight.size === 0) return;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([Promise.allSettled([...this.inflight]), new Promise<void>((resolve) => (timer = setTimeout(resolve, timeoutMs)))]);
+    clearTimeout(timer);
   }
 
   private async execute(p: Prepared, task: TaskRecord, built: BuiltRequest, apiKey: string): Promise<TaskRecord> {

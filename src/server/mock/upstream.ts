@@ -111,12 +111,16 @@ interface MockTask {
   deleted?: boolean;
 }
 const mockTasks = new Map<string, MockTask>();
-const timing = { queuedMs: Number(process.env.ARK_MOCK_QUEUED_MS ?? 1500), runningMs: Number(process.env.ARK_MOCK_RUNNING_MS ?? 3000) };
+const timing = {
+  queuedMs: Number(process.env.ARK_MOCK_QUEUED_MS ?? 1500),
+  runningMs: Number(process.env.ARK_MOCK_RUNNING_MS ?? 3000),
+  /** 同步出图接口多久才返回（模拟真实上游要 1–3 分钟） */
+  imageMs: Number(process.env.ARK_MOCK_IMAGE_MS ?? 0),
+};
 
-/** 测试用：调整 mock 任务的状态推进时间 */
-export function setMockTiming(t: { queuedMs: number; runningMs: number }): void {
-  timing.queuedMs = t.queuedMs;
-  timing.runningMs = t.runningMs;
+/** 测试用：调整 mock 任务的状态推进时间、同步出图耗时 */
+export function setMockTiming(t: Partial<typeof timing>): void {
+  Object.assign(timing, t);
 }
 
 function promptOf(body: Record<string, unknown>): string {
@@ -229,6 +233,8 @@ export const mockFetch: FetchLike = async (url, init) => {
       : json(401, { error: { code: 'AuthenticationError', message: 'the API key or AK/SK in the request is missing or invalid. request id: mock0000000002', param: '', type: 'Unauthorized' } });
   }
   const body = typeof init.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+  const isImage = (!isMiniMax && init.method === 'POST' && u.pathname.endsWith('/images/generations')) || (isMiniMax && init.method === 'POST' && u.pathname === '/v1/image_generation');
+  if (isImage && timing.imageMs > 0) await new Promise((r) => setTimeout(r, timing.imageMs));
   if (!isMiniMax && init.method === 'POST' && u.pathname.endsWith('/images/generations')) return byteplusImages(body);
   if (isMiniMax && init.method === 'POST' && u.pathname === '/v1/image_generation') return minimaxImages(body);
   // 订阅额度：返回格式文档未写，这里按 2026-10-08 实测的结构

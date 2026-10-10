@@ -1,7 +1,8 @@
 import type { EnumOption, FieldDef, PredCtx } from '../../../catalog/types.js';
 import { T, doc } from '../../../catalog/helpers.js';
 import { DOC_URLS, GROUP_TOTAL_LIMIT, modeIdsOf, type SeedreamProfile } from './profile.js';
-import { LAYER_DEFAULT, fmtInt, generateSizeSpec, layerSizeSpec, sizeToWire } from './sizes.js';
+import { PRICE_TIER_PIXELS, PRICES } from './pricing.js';
+import { LAYER_DEFAULT, fmtInt, generateSizeSpec, layerSizeSpec, sizeToWire, tierMaxPixels } from './sizes.js';
 
 const API = doc(DOC_URLS.api);
 const imageCount = (c: PredCtx): number => c.slots.image?.length ?? 0;
@@ -13,13 +14,22 @@ export function sizeField(p: SeedreamProfile): FieldDef {
   const tiers = p.size.tiers.join(' / ');
   // 原文 Pricing note：1.5K 与 1K 同价，生成场景画质更好（pro / flash）
   const mid = p.size.tiers.includes('1.5K');
+  // 按像素分档计价的模型（5.0 pro）：说明里写清两档单价，默认档位落在哪一档
+  const price = PRICES[p.key].output;
+  const defaultPx = tierMaxPixels(p.size, p.size.defaultTier);
+  const defaultHigh = defaultPx !== undefined && defaultPx > PRICE_TIER_PIXELS;
+  const layerPrice = PRICES[p.key].layer;
+  const layerZh = p.layer && Array.isArray(layerPrice) ? `；图层分解按每张输出（底图与各图层）同样分档：$${layerPrice[0]} / $${layerPrice[1]}` : '';
+  const layerEn = p.layer && Array.isArray(layerPrice) ? `; layer decomposition is tiered the same way per output (base image and each layer): $${layerPrice[0]} / $${layerPrice[1]}` : '';
+  const tierZh = Array.isArray(price) ? `；普通生成按单张像素计价：不超过 ${fmtInt(PRICE_TIER_PIXELS)} 像素 $${price[0]}/张，超过 $${price[1]}/张${defaultHigh ? `（默认 ${p.size.defaultTier} 属于后者）` : ''}${layerZh}` : '';
+  const tierEn = Array.isArray(price) ? `; standard generation is priced per image by pixels: up to ${fmtInt(PRICE_TIER_PIXELS)} px $${price[0]}, above $${price[1]}${defaultHigh ? ` (the default ${p.size.defaultTier} is the latter)` : ''}${layerEn}` : '';
   return {
     key: 'size',
     type: 'size',
     label: T('尺寸', 'Size'),
     help: T(
-      `档位 ${tiers}，或自定义宽x高（单张总像素 ${fmtInt(min)}–${fmtInt(max)}，宽高比 1/16–16）。用档位时把宽高比写进提示词，实际尺寸以返回结果为准${mid ? '；1.5K 与 1K 同价、画质更好' : ''}${p.layer ? '；图层分解只支持档位或 auto' : ''}`,
-      `Tier ${tiers}, or custom WxH (total pixels ${fmtInt(min)}–${fmtInt(max)}, aspect 1/16–16). With a tier, describe the aspect ratio in the prompt; the returned size is authoritative${mid ? '; 1.5K costs the same as 1K with better quality' : ''}${p.layer ? '; layer decomposition accepts tiers or auto only' : ''}`,
+      `档位 ${tiers}，或自定义宽x高（单张总像素 ${fmtInt(min)}–${fmtInt(max)}，宽高比 1/16–16）。用档位时把宽高比写进提示词，实际尺寸以返回结果为准${mid ? '；1.5K 与 1K 同价、画质更好' : ''}${tierZh}${p.layer ? '；图层分解只支持档位或 auto' : ''}`,
+      `Tier ${tiers}, or custom WxH (total pixels ${fmtInt(min)}–${fmtInt(max)}, aspect 1/16–16). With a tier, describe the aspect ratio in the prompt; the returned size is authoritative${mid ? '; 1.5K costs the same as 1K with better quality' : ''}${tierEn}${p.layer ? '; layer decomposition accepts tiers or auto only' : ''}`,
     ),
     group: 'basic',
     wire: null,

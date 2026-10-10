@@ -2,6 +2,10 @@ import { DatabaseSync } from 'node:sqlite';
 import type { FormInput } from '../../shared/catalog/types.js';
 import type { MediaMeta } from '../../shared/catalog/types.js';
 import type { ExchangeRecord, PresetRecord, ResultRecord, TaskListQuery, TaskRecord, TemplateRecord } from '../../shared/task/records.js';
+import { isTerminal, TERMINAL_STATUSES } from '../../shared/task/status.js';
+
+/** SQL 里的终态列表（UPDATE 的 SET 表达式里 status 指更新前的值） */
+const TERMINAL_SQL = TERMINAL_STATUSES.map((s) => `'${s}'`).join(',');
 import { MIGRATIONS } from './schema.js';
 
 type Row = Record<string, unknown>;
@@ -133,8 +137,14 @@ export class Store {
       const m = map[k];
       if (m) cols[m[0]] = m[1](v);
     }
-    const sets = Object.keys(cols).map((c) => `${c} = $${c}`).join(', ');
-    this.db.prepare(`UPDATE tasks SET ${sets} WHERE id = $id`).run({ ...(cols as Record<string, string | number | null>), id });
+    const sets = Object.keys(cols).map((c) => `${c} = $${c}`);
+    // 从未结束进入终态的那一刻记下完成时间；之后再更新（收藏、补下载）不覆盖，
+    // 迁移前就已结束的旧记录也不补写（无法知道真正的完成时间）
+    if (patch.status !== undefined && isTerminal(patch.status)) {
+      sets.push(`finished_at = CASE WHEN finished_at IS NULL AND status NOT IN (${TERMINAL_SQL}) THEN $finished_now ELSE finished_at END`);
+      cols.finished_now = now;
+    }
+    this.db.prepare(`UPDATE tasks SET ${sets.join(', ')} WHERE id = $id`).run({ ...(cols as Record<string, string | number | null>), id });
   }
 
   setPoll(id: string, poll: PollState | null): void {
@@ -178,6 +188,17 @@ export class Store {
   listActiveAsync(): TaskRecord[] {
     const rows = this.db
       .prepare("SELECT * FROM tasks WHERE kind = 'async' AND status IN ('queued','running','unknown') AND upstream_task_id IS NOT NULL ORDER BY created_at")
+      .all() as Row[];
+    return rows.map((r) => this.toTask(r));
+  }
+
+  /**
+   * 上次服务关闭时被打断的任务：还停在提交阶段的（含异步任务的创建请求），
+   * 以及同步任务的生成 / 流式输出中——它们没有可以续查的上游任务
+   */
+  listInterrupted(): TaskRecord[] {
+    const rows = this.db
+      .prepare("SELECT * FROM tasks WHERE status IN ('resolving_assets','submitting') OR (kind != 'async' AND status IN ('running','streaming')) ORDER BY created_at")
       .all() as Row[];
     return rows.map((r) => this.toTask(r));
   }
@@ -342,6 +363,7 @@ export class Store {
       id,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at),
+      finishedAt: r.finished_at === null || r.finished_at === undefined ? null : Number(r.finished_at),
       origin: r.origin as TaskRecord['origin'],
       providerId: String(r.provider_id),
       modelId: String(r.model_id),

@@ -6,7 +6,7 @@
 
 **agent 请先读原文**：如果你是通过网页抓取 / 摘要工具读到这份文档的，先用 `curl -fsSL https://raw.githubusercontent.com/SilverHim/ai-video-platform/main/docs/agent-setup.md` 读取原文，下面的命令必须逐字执行。
 
-**目标**：确保本机装了「AI视频生成平台」桌面版并正在运行，然后把它的 MCP 服务器以 `ai-video` 为名登记到 Claude Code 的用户级配置。完成后用户开一个新会话就能用 `list_models`、`generate_image` 等工具。
+**目标**：确保本机装了「AI视频生成平台」桌面版并正在运行，然后把它的 MCP 服务器以 `ai-video` 为名登记到 Claude Code 的用户级配置，并设 10 分钟超时（`"timeout": 600000`：Claude Code 对 HTTP 类服务器默认每个请求只等 60 秒，出图常要 1–3 分钟；`claude mcp add` 没有超时参数，所以用 `claude mcp add-json`）。完成后用户开一个新会话就能用 `list_models`、`generate_image` 等工具。
 
 ## 约定（agent 必须遵守）
 
@@ -81,7 +81,7 @@ URL=$(printf '%s' "$INFO" | sed -nE 's/.*"url":"([^"]+)".*/\1/p')
 TOKEN=$(printf '%s' "$INFO" | sed -nE 's/.*"token":"([a-f0-9]{64})".*/\1/p')
 [ -n "$URL" ] && [ -n "$TOKEN" ] || { echo MCP_INFO_INVALID; exit 1; }
 claude mcp remove ai-video --scope user >/dev/null 2>&1 || true
-claude mcp add --transport http --scope user ai-video "$URL" --header "Authorization: Bearer $TOKEN" >/dev/null || { echo REGISTER_FAILED; exit 1; }
+claude mcp add-json --scope user ai-video "{\"type\":\"http\",\"url\":\"$URL\",\"headers\":{\"Authorization\":\"Bearer $TOKEN\"},\"timeout\":600000}" >/dev/null || { echo REGISTER_FAILED; exit 1; }
 echo REGISTERED
 claude mcp list 2>&1 | grep "ai-video"
 )
@@ -146,8 +146,12 @@ claude mcp list 2>&1 | grep "ai-video"
   if (-not $ready) { 'NOT_READY'; Get-Content "$D\logs\server.log" -Tail 20 -ErrorAction SilentlyContinue; return }
   $info = Invoke-RestMethod -UseBasicParsing -TimeoutSec 5 "http://127.0.0.1:$port/api/mcp" -Headers @{ 'x-ark-client' = 'web' }
   if (-not $info.url -or $info.token -notmatch '^[a-f0-9]{64}$') { 'MCP_INFO_INVALID'; return }
+  $json = [ordered]@{ type = 'http'; url = $info.url; headers = @{ Authorization = "Bearer $($info.token)" }; timeout = 600000 } | ConvertTo-Json -Compress
+  # 统一按 Legacy 方式给命令行程序传参并转义双引号：5.1 默认如此，7.3+ 对 .cmd / .bat 启动器也会回到 Legacy（只影响本脚本块）
+  $PSNativeCommandArgumentPassing = 'Legacy'
+  $json = $json -replace '"', '\"'
   claude mcp remove ai-video --scope user 2>$null | Out-Null
-  claude mcp add --transport http --scope user ai-video $info.url --header "Authorization: Bearer $($info.token)" | Out-Null
+  claude mcp add-json --scope user ai-video $json | Out-Null
   if ($LASTEXITCODE -ne 0) { 'REGISTER_FAILED'; return }
   'REGISTERED'
   claude mcp list 2>&1 | Select-String 'ai-video'

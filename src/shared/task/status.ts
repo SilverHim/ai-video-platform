@@ -18,7 +18,9 @@ export type JobStatus =
   | 'submit_unknown'
   | TaskStatus;
 
-const TERMINAL = new Set<JobStatus>(['succeeded', 'partial', 'failed', 'cancelled', 'expired']);
+/** 终态（不会再变化的状态） */
+export const TERMINAL_STATUSES: readonly JobStatus[] = ['succeeded', 'partial', 'failed', 'cancelled', 'expired'];
+const TERMINAL = new Set<JobStatus>(TERMINAL_STATUSES);
 
 export function isTerminal(s: JobStatus): boolean {
   return TERMINAL.has(s);

@@ -1,6 +1,7 @@
 import { isAbsolute } from 'node:path';
 import type { AssetRef, FieldDef, FormInput, ModelDef, ProviderDef } from '../../shared/catalog/types.js';
 import type { ResultRecord, TaskRecord } from '../../shared/task/records.js';
+import { isTerminal } from '../../shared/task/status.js';
 import type { AssetStore } from '../assets/asset-store.js';
 import type { Store } from '../store/store.js';
 
@@ -42,8 +43,13 @@ export interface McpGenerateInput {
   credential?: 'paygo' | 'subscription';
 }
 
+/** 不传 mode 时用的模式：第一个不是派生（如「生成正片」）、也不默认隐藏的模式 */
+export function defaultModeId(model: ModelDef): string {
+  return model.modes.find((m) => m.entry !== 'derived' && !m.hiddenByDefault)?.id ?? model.modes[0]!.id;
+}
+
 export async function toForm(input: McpGenerateInput, provider: ProviderDef, model: ModelDef, d: { store: Store; assets: AssetStore }): Promise<FormInput> {
-  const modeId = input.mode ?? model.modes.find((m) => m.entry !== 'derived' && !m.hiddenByDefault)?.id ?? model.modes[0]!.id;
+  const modeId = input.mode ?? defaultModeId(model);
   const mode = model.modes.find((m) => m.id === modeId);
   if (!mode) throw new McpInputError(`模型 ${model.id} 没有模式 ${modeId}；可用：${model.modes.map((m) => m.id).join(', ')}`);
   const slots: FormInput['slots'] = {};
@@ -65,8 +71,11 @@ export async function toForm(input: McpGenerateInput, provider: ProviderDef, mod
   };
 }
 
-/** 字段声明 → 给 agent 看的 JSON 描述 */
-export function describeField(f: FieldDef, modeIds: string[]) {
+/**
+ * 字段声明 → 给 agent 看的 JSON 描述。
+ * 默认值随模式变化的字段（例如尺寸）给出 default_by_mode：各模式不传这个参数时实际发送的值
+ */
+export function describeField(f: FieldDef, modeIds: string[], defaultsByMode?: Record<string, unknown>) {
   const base = {
     key: f.key,
     type: f.type,
@@ -76,7 +85,7 @@ export function describeField(f: FieldDef, modeIds: string[]) {
     modes: f.modes ?? modeIds,
     ...(f.help ? { help: f.help.zh } : {}),
     ...(f.experimental ? { experimental: true } : {}),
-    ...(typeof f.default !== 'function' ? { default: f.default } : { default: '（随上下文变化）' }),
+    ...(typeof f.default !== 'function' ? { default: f.default } : defaultsByMode && Object.keys(defaultsByMode).length ? { default_by_mode: defaultsByMode } : { default: '（随参数与素材变化，用 preview_request 查看实际值）' }),
   };
   switch (f.type) {
     case 'enum':
@@ -102,6 +111,10 @@ export function summarizeTask(t: TaskRecord, outputsRoot: string) {
     model_id: t.modelId,
     mode: t.modeId,
     created_at: new Date(t.createdAt).toISOString(),
+    updated_at: new Date(t.updatedAt).toISOString(),
+    // 已结束的任务：完成时间与耗时（旧记录没有完成时间就不给）
+    ...(isTerminal(t.status) && t.finishedAt ? { finished_at: new Date(t.finishedAt).toISOString(), duration_ms: Math.max(0, t.finishedAt - t.createdAt) } : {}),
+    ...(t.usage ? { usage: t.usage } : {}),
     ...(t.upstreamTaskId ? { upstream_task_id: t.upstreamTaskId } : {}),
     ...(t.costEstimate ? { estimated_cost_usd: t.costEstimate.amount } : {}),
     ...(t.form.credential ? { credential: t.form.credential } : {}),

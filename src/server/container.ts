@@ -23,6 +23,9 @@ export interface Container {
   close: () => Promise<void>;
 }
 
+/** 关闭服务时最多等后台出图多久（桌面版退出时整体只给 8 秒） */
+const CLOSE_DRAIN_MS = 5_000;
+
 /** 组装服务；测试可注入 fetch / downloader */
 export function createContainer(config: ResolvedConfig, opts: { fetchImpl?: FetchLike; controlFetch?: FetchLike; downloader?: Downloader; env?: NodeJS.ProcessEnv; catalog?: Catalog; uploadTargets?: UploadTargets } = {}): Container {
   const keystore = new Keystore(config.paths.keys, opts.env ?? process.env);
@@ -47,6 +50,8 @@ export function createContainer(config: ResolvedConfig, opts: { fetchImpl?: Fetc
     services: { tasks, assets, capture, events, scheduler, control, endpoints: new EndpointDirectory(control, keystore) },
     close: async () => {
       scheduler.stop();
+      // generate_image 提前返回后仍在后台出图的任务：先等它们落盘（有上限），再关数据库
+      await tasks.drain(CLOSE_DRAIN_MS);
       // 先同步关闭数据库：Windows 上打开中的文件不能删除 / 移动
       store.close();
       await upstream.close();

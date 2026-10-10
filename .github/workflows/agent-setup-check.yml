@@ -45,6 +45,7 @@ jobs:
           out=$(bash "$RUNNER_TEMP/blocks/mac-3.sh" 2>&1) || true; echo "$out" | sed -E 's/[a-f0-9]{64}/<TOKEN>/g'
           echo "$out" | grep -qx REGISTERED
           echo "$out" | grep "ai-video" | grep -q Connected
+          node -e "const e=require(process.env.CLAUDE_CONFIG_DIR+'/.claude.json').mcpServers['ai-video']; if (e.timeout!==600000||e.type!=='http') { console.error('登记内容不对', e.type, e.timeout); process.exit(1); } console.log('timeout', e.timeout)"
       - name: 第 3 步：重跑一次（以后轮换令牌就是这样重跑）
         env:
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-cfg
@@ -114,6 +115,9 @@ jobs:
           $out = Invoke-Expression ([IO.File]::ReadAllText("$env:RUNNER_TEMP\blocks\win-2.ps1")) | Out-String
           $out -replace '[a-f0-9]{64}', '<TOKEN>'
           if ($out -notmatch 'REGISTERED' -or $out -notmatch 'Connected') { throw '第 2 步没有接入成功' }
+          $e = (Get-Content "$env:CLAUDE_CONFIG_DIR\.claude.json" -Raw | ConvertFrom-Json).mcpServers.'ai-video'
+          "timeout: $($e.timeout)  type: $($e.type)"
+          if ($e.timeout -ne 600000 -or $e.type -ne 'http' -or $e.headers.Authorization -notmatch '^Bearer [a-f0-9]{64}$') { throw '登记内容不对（timeout / type / Authorization）' }
       - name: 第 2 步：启动并接入（PowerShell 7）
         shell: pwsh
         env:
@@ -123,6 +127,9 @@ jobs:
           $out = Invoke-Expression ([IO.File]::ReadAllText("$env:RUNNER_TEMP\blocks\win-2.ps1")) | Out-String
           $out -replace '[a-f0-9]{64}', '<TOKEN>'
           if ($out -notmatch 'REGISTERED' -or $out -notmatch 'Connected') { throw '第 2 步没有接入成功' }
+          $e = (Get-Content "$env:CLAUDE_CONFIG_DIR\.claude.json" -Raw | ConvertFrom-Json).mcpServers.'ai-video'
+          "timeout: $($e.timeout)  type: $($e.type)"
+          if ($e.timeout -ne 600000 -or $e.type -ne 'http' -or $e.headers.Authorization -notmatch '^Bearer [a-f0-9]{64}$') { throw '登记内容不对（timeout / type / Authorization）' }
       - name: 服务日志（失败时）
         if: failure()
         shell: powershell

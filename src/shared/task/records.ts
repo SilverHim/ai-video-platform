@@ -29,6 +29,8 @@ export interface TaskRecord {
   id: string;
   createdAt: number;
   updatedAt: number;
+  /** 第一次进入终态的时间；旧记录没有 */
+  finishedAt?: number | null;
   origin: TaskOrigin;
   providerId: string;
   modelId: string;

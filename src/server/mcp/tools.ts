@@ -7,17 +7,30 @@ import { isTerminal } from '../../shared/task/status.js';
 import type { AppDeps } from '../app.js';
 import type { Catalog } from '../tasks/task-service.js';
 import { TaskInputError } from '../tasks/task-service.js';
-import { describeField, McpInputError, summarizeTask, toForm, type McpGenerateInput } from './convert.js';
+import { defaultModeId, describeField, McpInputError, summarizeTask, toForm, type McpGenerateInput } from './convert.js';
+import { evaluate } from '../../shared/engine/evaluate.js';
 import { ControlPlaneError } from '../controlplane/ark-control.js';
 import { ControlNotConfiguredError } from '../controlplane/directory.js';
 import type { EndpointInfo } from '../../shared/api-contract.js';
-import type { ModelDef } from '../../shared/catalog/types.js';
+import type { ModeDef, ModelDef } from '../../shared/catalog/types.js';
 import { makeThumbnail } from '../media/thumbnail.js';
 
 type ToolResult = { content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[]; isError?: boolean };
 
 const ok = (data: unknown, extra: ToolResult['content'] = []): ToolResult => ({ content: [{ type: 'text', text: JSON.stringify(data, null, 2) }, ...extra] });
 const fail = (message: string, details?: unknown): ToolResult => ({ content: [{ type: 'text', text: JSON.stringify({ error: message, ...(details ? { details } : {}) }, null, 2) }], isError: true });
+
+/** 提示词里引用素材的写法：只列这个模式素材槽里实际有的类型（纯图像模型就只有 Image n） */
+function referenceSyntax(m: ModeDef): { reference_syntax?: string } {
+  if (m.prompt.refs === false) return {};
+  const kinds = [...new Set(m.slots.map((s) => s.kind))];
+  if (kinds.length === 0) return {};
+  const label = m.prompt.refLabel ?? ((k: string, n: number) => `${k === 'image' ? 'Image' : k === 'video' ? 'Video' : 'Audio'} ${n}`);
+  return { reference_syntax: [...new Set(kinds.map((k) => label(k, 1)))].join(' / ') };
+}
+
+/** generate_image 默认最多等多久：留在常见的 60 秒请求超时之内，没出图就先返回 task_id */
+const IMAGE_WAIT_DEFAULT_SECONDS = 50;
 
 /** 内联缩略图上限：控制 MCP 输出的 token 消耗 */
 const INLINE_IMAGE_MAX_BYTES = 200 * 1024;
@@ -29,7 +42,7 @@ const assetSpec = z
 
 const generateShape = {
   model_id: z.string().describe('模型 id，例如 byteplus/seedream-5-0-pro（用 list_models 查）'),
-  mode: z.string().optional().describe('模式 id；不填用模型的第一个模式'),
+  mode: z.string().optional().describe('模式 id；不填用默认模式（get_model_schema 的 modes 里标了 default: true 的那个）'),
   prompt: z.string().optional().describe('提示词。引用素材时按 get_model_schema 给出的写法（如 "Image 1"、"@Video 1"）'),
   params: z.record(z.string(), z.unknown()).optional().describe('参数，键为 get_model_schema 返回的字段 key（不是 wire 名）'),
   assets: assetSpec,
@@ -210,6 +223,18 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
       try {
         const { provider, model } = resolveModel(model_id);
         const modeIds = model.modes.map((m) => m.id);
+        const defaultMode = defaultModeId(model);
+        // 默认值随上下文变化的字段（例如尺寸）：按模式求值一遍，给出不传时实际发送的值
+        const dynamicKeys = model.fields.filter((f) => typeof f.default === 'function').map((f) => f.key);
+        const defaultsByField: Record<string, Record<string, unknown>> = {};
+        for (const m of dynamicKeys.length ? model.modes : []) {
+          if (m.entry === 'derived') continue;
+          const ev = evaluate(provider, model, { providerId: provider.id, modelId: model.id, modeId: m.id, values: {}, slots: {}, prompt: '' });
+          for (const k of dynamicKeys) {
+            const st = ev.fields[k];
+            if (st?.visible && st.value !== undefined) (defaultsByField[k] ??= {})[m.id] = st.value;
+          }
+        }
         return ok({
           model_id: model.id,
           provider: provider.id,
@@ -219,14 +244,15 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
           modes: model.modes.map((m) => ({
             id: m.id,
             name: m.label.zh,
+            ...(m.id === defaultMode ? { default: true } : {}),
             ...(m.hint ? { hint: m.hint.zh } : {}),
             ...(m.entry === 'derived' ? { derived: true } : {}),
             ...(m.experimental ? { experimental: true } : {}),
             locked: Object.fromEntries(Object.entries(m.locked ?? {}).map(([k, v]) => [k, { value: v.value, reason: v.reason.zh }])),
-            prompt: { required: typeof m.prompt.required === 'function' ? '视参数而定' : m.prompt.required, ...(m.prompt.maxChars ? { max_chars: m.prompt.maxChars } : {}), ...(m.prompt.refLabel ? { reference_syntax: `${m.prompt.refLabel('image', 1)} / ${m.prompt.refLabel('video', 1)} / ${m.prompt.refLabel('audio', 1)}` } : { reference_syntax: 'Image 1 / Video 1 / Audio 1' }), ...(m.prompt.hint ? { hint: m.prompt.hint.zh } : {}) },
+            prompt: { required: typeof m.prompt.required === 'function' ? '视参数而定' : m.prompt.required, ...(m.prompt.maxChars ? { max_chars: m.prompt.maxChars } : {}), ...referenceSyntax(m), ...(m.prompt.hint ? { hint: m.prompt.hint.zh } : {}) },
             slots: m.slots.map((s) => ({ id: s.id, kind: s.kind, role: s.role, min: s.min, max: s.max, formats: s.spec.formats, max_mb: Math.round(s.spec.maxBytes / 1048576), ...(s.spec.durationSec ? { duration_sec: s.spec.durationSec } : {}), ...(s.spec.aspect ? { aspect: s.spec.aspect } : {}), ...(s.spec.pixels ? { pixels: s.spec.pixels } : {}) })),
           })),
-          fields: model.fields.filter((f) => (f.send ?? 'always') !== 'never' || f.type === 'enum').map((f) => describeField(f, modeIds)),
+          fields: model.fields.filter((f) => (f.send ?? 'always') !== 'never' || f.type === 'enum').map((f) => describeField(f, modeIds, defaultsByField[f.key])),
           constraints: model.constraints.map((c) => c.id),
           tip: '先用 preview_request 检查参数和请求体，再调用 generate_image / create_video_task。',
         });
@@ -242,9 +268,10 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
     'preview_request',
     {
       title: '预览请求',
-      description: '不提交：校验参数并返回问题列表、最终请求体、curl、预估费用，以及是否需要把本地视频上传到公共托管站。',
+      description: '不提交、不计费：校验参数并返回问题列表、最终请求体、curl（Key 用环境变量占位）、预估费用，以及是否需要把本地视频上传到公共托管站。传本地文件路径时会把文件导入平台素材库（按内容去重），所以不标为只读。',
       inputSchema: generateInput,
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      // 不是只读：本地路径的素材会导入素材库（幂等：同一文件只存一份）
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async (raw) => {
       try {
@@ -257,8 +284,11 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
           ...(ep ? { endpoint: endpointSummary(ep) } : {}),
           can_submit: p.canSubmit,
           issues: p.issues.map((i) => ({ id: i.id, severity: i.severity, message: i.message.zh, ...(i.fix ? { fix: i.fix.patch } : {}) })),
-          request: p.request,
-          estimated_cost: p.cost ? { usd: p.cost.amount, basis: p.cost.basis.zh } : null,
+          // 平台内部的接口 id（endpointId）不给 agent：容易和 BytePlus 推理接入点（ep-…）混淆
+          request: { method: p.request.method, url: p.request.url, body: p.request.body, body_bytes: p.request.bodyBytes, stream: p.request.stream },
+          curl: p.curl,
+          ...(p.notes.length ? { notes: p.notes.map((n) => n.zh) } : {}),
+          estimated_cost: p.cost ? { usd: p.cost.amount, basis: p.cost.basis.zh, confidence: p.cost.confidence } : null,
           ...(p.credential
             ? {
                 credential: {
@@ -283,11 +313,19 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
     'generate_image',
     {
       title: '生成图片',
-      description: '提交图像生成（同步，完成后返回本地文件路径与缩略图）。会产生费用，返回里有预估费用。',
-      inputSchema: withConsent,
+      description: `提交图像生成，最多等 wait_seconds 秒（默认 ${IMAGE_WAIT_DEFAULT_SECONDS}）：完成就返回本地文件路径与缩略图；还没完成就先返回 task_id，之后用 get_task 继续等。出图常要 1–3 分钟。调用超时或断开不等于失败——任务仍在平台上运行并计费，先用 get_task / list_tasks 查，不要重新提交。会产生费用，返回里有预估费用。`,
+      inputSchema: withConsent.extend({
+        wait_seconds: z
+          .number()
+          .int()
+          .min(0)
+          .max(540)
+          .optional()
+          .describe(`最多等待多少秒（0–540），默认 ${IMAGE_WAIT_DEFAULT_SECONDS}。超过约 60 秒需要客户端的工具超时足够长，否则调用会先超时（任务照常完成）`),
+      }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    async (raw) => {
+    async (raw, ctx) => {
       try {
         const input = applyPreset(raw);
         const { provider, model } = resolveModel(input.model_id);
@@ -295,7 +333,11 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
         await checkEndpoint(model, input.model_override);
         const form = await toForm(input as McpGenerateInput, provider, model, conv);
         if (model.fields.some((f) => f.key === 'stream')) form.values.stream = false;
-        const task = await svc.submit(form, 'mcp', { ...(input.allow_public_upload ? { publicUploadConsent: true } : {}), ...(input.temp_host ? { tempHost: input.temp_host } : {}) });
+        // 不等上游完成就拿到任务：等待有上限，客户端超时也不会丢掉 task_id
+        const { task: started } = await svc.start(form, 'mcp', { ...(input.allow_public_upload ? { publicUploadConsent: true } : {}), ...(input.temp_host ? { tempHost: input.temp_host } : {}) });
+        const wait = input.wait_seconds ?? IMAGE_WAIT_DEFAULT_SECONDS;
+        const task = (wait > 0 ? await waitFor(started.id, wait, ctx as never) : deps.store.getTask(started.id)) ?? started;
+        if (!isTerminal(task.status)) return ok({ ...summarizeTask(task, outputsRoot), next: '图片还在生成：用 get_task 查询（可带 wait_seconds 继续等）。不要重新提交，以免重复计费' });
         return ok(summarizeTask(task, outputsRoot), await imageBlocks(task));
       } catch (err) {
         if (err instanceof TaskInputError && err.code === 'consent_required') return fail(`${err.i18n.zh}。如确认可以公开，请带 allow_public_upload: true 重试；或改用 https 链接 / asset:// / task:<id>#<n>。`);
@@ -308,8 +350,8 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
     'create_video_task',
     {
       title: '创建视频任务',
-      description: '提交视频生成（异步）。返回 task_id；可选 wait_seconds 等待完成（期间推送进度），没完成就之后用 get_task 查。会产生费用。',
-      inputSchema: withConsent.extend({ wait_seconds: z.number().int().min(0).max(540).optional().describe('最多等待多少秒（0–540），默认不等') }),
+      description: '提交视频生成（异步）。返回 task_id；可选 wait_seconds 等待完成（期间推送进度），没完成就之后用 get_task 查。调用超时或断开不等于失败——任务仍在平台上运行并计费，先用 get_task / list_tasks 查，不要重新提交。会产生费用。',
+      inputSchema: withConsent.extend({ wait_seconds: z.number().int().min(0).max(540).optional().describe('最多等待多少秒（0–540），默认不等。超过约 60 秒需要客户端的工具超时足够长，否则调用会先超时（任务照常进行）') }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async (raw, ctx) => {
@@ -333,8 +375,12 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
     'get_task',
     {
       title: '查询任务',
-      description: '查询任务状态与结果文件。可选 wait_seconds 等待完成；include_images 返回图片缩略图。',
-      inputSchema: z.object({ task_id: z.string(), wait_seconds: z.number().int().min(0).max(540).optional(), include_images: z.boolean().optional() }),
+      description: '查询任务状态与结果文件（含耗时 duration_ms 与 usage）。可选 wait_seconds 等待完成；include_images 返回图片缩略图。',
+      inputSchema: z.object({
+        task_id: z.string(),
+        wait_seconds: z.number().int().min(0).max(540).optional().describe('最多等待多少秒（0–540），默认不等。超过约 60 秒需要客户端的工具超时足够长'),
+        include_images: z.boolean().optional(),
+      }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ task_id, wait_seconds, include_images }, ctx) => {

@@ -14,10 +14,11 @@
 2. 打开网页「设置 → MCP 接入」，复制接入命令，在终端运行，形如：
 
 ```bash
-claude mcp add --transport http --scope user ai-video http://127.0.0.1:8787/mcp --header "Authorization: Bearer <令牌>"
+claude mcp remove ai-video --scope user 2>/dev/null; claude mcp add-json --scope user ai-video '{"type":"http","url":"http://127.0.0.1:8787/mcp","headers":{"Authorization":"Bearer <令牌>"},"timeout":600000}'
 ```
 
-3. 建议把该服务器的超时设为 10 分钟：在 `~/.claude.json` 对应条目里加 `"timeout": 600000`。
+- 命令里带了 10 分钟超时（`"timeout": 600000`）。Claude Code 对 HTTP 类 MCP 服务器默认每个请求只等 60 秒（计到服务器返回第一个字节），出图常要 1–3 分钟；单服务器的 `timeout` 会同时提高这个计时器（[官方文档](https://code.claude.com/docs/en/env-vars) `MCP_TOOL_TIMEOUT` 一条）。`claude mcp add` 没有超时参数，所以用 `add-json`。
+- Claude Code 2.1.274 之前的版本，Streamable HTTP 的工具调用接近 5 分钟时可能被切断（即使设了更长的 timeout），等待超过 4 分钟的话建议先升级。
 
 - 地址只监听 `127.0.0.1`；请求必须带本机访问令牌（`<数据目录>/mcp-token`，可在设置页轮换）。
 - 规范要求校验 Origin：带非本机 Origin 的请求一律 403。
@@ -30,18 +31,27 @@ claude mcp add --transport http --scope user ai-video http://127.0.0.1:8787/mcp 
 |---|---|---|
 | `list_models` | 列出模型、模式、素材槽 | 否 |
 | `get_model_schema` | 某模型的全部字段（类型 / 默认 / 范围 / 枚举）、素材规格、提示词规则 | 否 |
-| `preview_request` | 校验参数，返回问题列表、最终请求体、curl、预估费用、是否需要公开上传 | 否 |
-| `generate_image` | 同步生成图片，返回本地文件路径与缩略图 | **是** |
+| `preview_request` | 校验参数，返回问题列表、最终请求体、curl（Key 用环境变量占位）、说明、预估费用（含可信度）、是否需要公开上传。传本地文件路径时会把文件导入素材库（按内容去重） | 否 |
+| `generate_image` | 生成图片，最多等 `wait_seconds`（默认 50 秒）：完成就返回本地文件路径与缩略图，没完成先返回 `task_id`，再用 `get_task` 继续等 | **是** |
 | `create_video_task` | 创建视频任务，可选 `wait_seconds`（≤540）等待完成并推送进度 | **是** |
-| `get_task` | 查询任务与结果文件，可选 `wait_seconds`、`include_images` | 否 |
+| `get_task` | 查询任务与结果文件（含耗时 `duration_ms`、`usage`），可选 `wait_seconds`、`include_images` | 否 |
 | `list_tasks` | 本地任务历史 | 否 |
 | `cancel_task` | 取消排队中的任务，或删除已结束任务的云端记录 | 否 |
-| `list_presets` | 参数预设（后续版本） | 否 |
+| `list_presets` | 列出参数预设（网页「预设与模板」里维护）；生成类工具可用 `preset_id` 套用 | 否 |
 | `list_endpoints` | BytePlus：账号下的推理接入点（Endpoint），可按 `model_id` 筛选；返回状态和内容过滤开关。需要先在设置页配置 AK/SK | 否 |
+
+### 等待与超时
+
+- 出图常要 1–3 分钟，视频更久。`generate_image` 默认最多等 50 秒（留在常见的 60 秒请求超时之内），没出图就先返回 `task_id` 和 `next`；之后用 `get_task`（可带 `wait_seconds`）继续等。
+- **调用超时或断开不等于失败**：任务仍在平台上运行并计费。先用 `get_task` / `list_tasks` 查，不要重新提交，否则会重复计费。
+- `wait_seconds` 超过约 60 秒，需要客户端的工具超时足够长（按上面的接入命令登记就有 10 分钟）。等待期间如果客户端带了 `progressToken`，平台会推送进度通知。
+- 平台对 MCP 请求一律用 SSE 流式响应（响应头立即发出、每 15 秒保活）。
 
 ### 参数与素材
 
 - `params` 的键是 `get_model_schema` 返回的字段 `key`（不是请求里的字段名）。
+- 默认值随模式变化的字段（例如尺寸）在 `get_model_schema` 里给出 `default_by_mode`：各模式不传这个参数时实际发送的值。尺寸会影响单价（例如 Seedream 5.0 pro：不超过 2,610,000 像素 $0.045/张，更大 $0.09/张，默认 2K 属于后者），实际费用以 `preview_request` 的 `estimated_cost` 为准。
+- `mode` 不填时用默认模式（`get_model_schema` 的 `modes` 里标了 `default: true` 的那个）。
 - `assets` 按槽位 id 分组，每项可以是：本地绝对路径、`https://` 链接、`asset://<素材ID>`、`mm_file://<file_id>`、`task:<任务id>#<结果序号>`（复用历史结果）。
 - 提示词里引用素材按 `get_model_schema` 给出的写法（如 `Image 1`、`@Video 1`）。
 - BytePlus Seedance 的本地参考视频需要先上传到公共临时托管站（默认 uguu.se，3 小时；可选 tmpfiles.org，24 小时），链接是公开的，所以必须显式传 `allow_public_upload: true`，否则工具返回错误说明。

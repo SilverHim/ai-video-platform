@@ -102,4 +102,6 @@ export const MIGRATIONS: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  // 任务从未结束进入终态的时间（耗时统计用；收藏、改备注会更新 updated_at，不能拿它算）
+  `ALTER TABLE tasks ADD COLUMN finished_at INTEGER;`,
 ];

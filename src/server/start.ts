@@ -3,6 +3,7 @@ import { createAdaptorServer } from '@hono/node-server';
 import { createApp } from './app.js';
 import { ensureDataDirs, resolveConfig, type ResolvedConfig, type ServerOptions } from './config.js';
 import { createContainer } from './container.js';
+import { acquireInstanceLock } from './platform/instance-lock.js';
 
 export interface RunningServer {
   url: string;
@@ -15,7 +16,15 @@ export interface RunningServer {
 export async function startServer(opts: ServerOptions & { version?: string }): Promise<RunningServer> {
   const config = resolveConfig(opts);
   ensureDataDirs(config.paths);
-  const container = createContainer(config);
+  // 同一个数据目录同时只能有一个服务实例（两个实例会重复轮询、重复下载，启动恢复也会误伤对方的任务）
+  const lock = acquireInstanceLock(config.paths.root);
+  let container: ReturnType<typeof createContainer>;
+  try {
+    container = createContainer(config);
+  } catch (err) {
+    lock.release();
+    throw err;
+  }
   let boundPort = config.port;
   const app = createApp({ config, keystore: container.keystore, store: container.store, services: container.services, version: opts.version ?? '0.0.0', getPort: () => boundPort });
 
@@ -53,9 +62,12 @@ export async function startServer(opts: ServerOptions & { version?: string }): P
   }
   if (lastErr) {
     await container.close();
+    lock.release();
     throw lastErr;
   }
 
+  // 已独占数据目录：上次关闭时被打断的任务都属于已经不在的实例，可以安全恢复
+  container.services.tasks.recoverInterrupted();
   container.services.scheduler.start();
   return {
     url: `http://127.0.0.1:${boundPort}`,
@@ -66,6 +78,7 @@ export async function startServer(opts: ServerOptions & { version?: string }): P
       if ('closeAllConnections' in server) server.closeAllConnections();
       await new Promise<void>((res, rej) => server.close((err) => (err ? rej(err) : res())));
       await container.close();
+      lock.release();
     },
   };
 }
