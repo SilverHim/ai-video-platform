@@ -12,7 +12,7 @@ import { evaluate } from '../../shared/engine/evaluate.js';
 import { ControlPlaneError } from '../controlplane/ark-control.js';
 import { ControlNotConfiguredError } from '../controlplane/directory.js';
 import type { EndpointInfo } from '../../shared/api-contract.js';
-import type { ModeDef, ModelDef } from '../../shared/catalog/types.js';
+import type { ModeDef, ModelDef, PromptGuide } from '../../shared/catalog/types.js';
 import { makeThumbnail } from '../media/thumbnail.js';
 
 type ToolResult = { content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[]; isError?: boolean };
@@ -27,6 +27,20 @@ function referenceSyntax(m: ModeDef): { reference_syntax?: string } {
   if (kinds.length === 0) return {};
   const label = m.prompt.refLabel ?? ((k: string, n: number) => `${k === 'image' ? 'Image' : k === 'video' ? 'Video' : 'Audio'} ${n}`);
   return { reference_syntax: [...new Set(kinds.map((k) => label(k, 1)))].join(' / ') };
+}
+
+/** 官方提示词指南 → 给 agent 看的精简结构（中文） */
+function describeGuide(g: PromptGuide) {
+  return {
+    title: g.title.zh,
+    source: g.source.url,
+    revision: g.source.revision,
+    checked_at: g.source.checkedAt,
+    summary: g.summary.zh,
+    ...(g.modes?.length ? { applies_to_modes: g.modes } : {}),
+    rules: g.rules.map((r) => ({ rule: r.text.zh, ...(r.modes?.length ? { modes: r.modes } : {}) })),
+    ...(g.examples?.length ? { examples: g.examples.map((e) => ({ prompt: e.prompt, note: e.note, ...(e.modes?.length ? { modes: e.modes } : {}) })) } : {}),
+  };
 }
 
 /** generate_image 默认最多等多久：留在常见的 60 秒请求超时之内，没出图就先返回 task_id */
@@ -254,7 +268,9 @@ export function registerTools(server: McpServer, deps: AppDeps, catalog: Catalog
           })),
           fields: model.fields.filter((f) => (f.send ?? 'always') !== 'never' || f.type === 'enum').map((f) => describeField(f, modeIds, defaultsByField[f.key])),
           constraints: model.constraints.map((c) => c.id),
-          tip: '先用 preview_request 检查参数和请求体，再调用 generate_image / create_video_task。',
+          // BytePlus 官方提示词指南的要点（提炼；applies_to_modes 是整份指南适用的模式，rules 里的 modes 表示只适用于这些模式）
+          ...(model.promptGuides?.length ? { prompt_guides: model.promptGuides.map(describeGuide) } : {}),
+          tip: `${model.promptGuides?.length ? '写提示词前先看 prompt_guides（官方提示词指南要点）；' : ''}先用 preview_request 检查参数、请求体和费用，再调用 generate_image / create_video_task。`,
         });
       } catch (err) {
         return toolError(err);

@@ -47,6 +47,13 @@ claude mcp remove ai-video --scope user 2>/dev/null; claude mcp add-json --scope
 - `wait_seconds` 超过约 60 秒，需要客户端的工具超时足够长（按上面的接入命令登记就有 10 分钟）。等待期间如果客户端带了 `progressToken`，平台会推送进度通知。
 - 平台对 MCP 请求一律用 SSE 流式响应（响应头立即发出、每 15 秒保活）。
 
+### 官方提示词指南
+
+- `get_model_schema` 对 BytePlus 模型返回 `prompt_guides`：从 BytePlus 官方提示词指南提炼的要点（规则 + 示范写法），附原文链接和核对时的 revision。规则带 `modes` 时只适用于这些模式。
+- 覆盖：Seedance 2.5、2.0 系列、1.5 pro、1.0 pro / pro fast 各自的提示词指南；Seedream 4.0 / 4.5 的提示词指南；Seedream 5.0 pro / flash 的交互式编辑指南（`<point>` / `<bbox>` 坐标改图）。Seedream 5.0 lite 没有官方指南覆盖。
+- MCP 连接时的说明（instructions）会提醒 agent 写提示词前先看这些要点。
+- 要点是提炼，不是原文；原文更新后用 `arkcli docs get <url> --outline` 对比 revision，再同步 `src/shared/providers/byteplus/prompt-guides.ts`。
+
 ### 参数与素材
 
 - `params` 的键是 `get_model_schema` 返回的字段 `key`（不是请求里的字段名）。

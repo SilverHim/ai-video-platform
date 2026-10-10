@@ -393,6 +393,8 @@ export interface ModelDef {
   lifecycle: Lifecycle;
   badges?: I18nText[];
   docs: DocRef[];
+  /** 官方提示词指南的要点（给 agent 写提示词用；MCP get_model_schema 返回） */
+  promptGuides?: PromptGuide[];
   /** 提交用的 endpoint id（见 ProviderDef.endpoints）；cancel 用于取消排队中的任务 / 删除云端记录 */
   endpoints: { submit: string; stream?: string; get?: string; cancel?: string; list?: string };
   modes: ModeDef[];
@@ -403,6 +405,20 @@ export interface ModelDef {
   /** 是否允许用 Endpoint ID 覆盖 model 字段 */
   allowModelOverride?: boolean;
   estimateCost?: (c: EvalCtx) => CostEstimate | null;
+}
+
+/** 官方提示词指南的提炼（不是原文）；source 记录原文链接与核对时的 revision */
+export interface PromptGuide {
+  id: string;
+  title: I18nText;
+  source: { url: string; revision: number; checkedAt: string };
+  summary: I18nText;
+  /** 这份指南适用的模式（挂到模型时按模型实际模式算出；不含派生模式，例如沿用样片提示词的「生成正片」） */
+  modes?: string[];
+  /** 规则的 modes 为空表示适用于指南的全部模式 */
+  rules: { text: I18nText; modes?: string[] }[];
+  /** 按规则写的示范提示词（英文） */
+  examples?: { prompt: string; note: string; modes?: string[] }[];
 }
 
 export interface EndpointDef {

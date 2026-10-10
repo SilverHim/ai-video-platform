@@ -6,6 +6,7 @@ import { buildConstraints, buildGuards } from './constraints.js';
 import { buildFields } from './fields.js';
 import { buildModes } from './modes.js';
 import { PROFILES, type SeedanceProfile } from './profile.js';
+import { SEEDANCE_PROMPT_GUIDES, scopeGuides } from '../prompt-guides.js';
 
 function badgesOf(p: SeedanceProfile): I18nText[] {
   return [
@@ -19,6 +20,7 @@ function badgesOf(p: SeedanceProfile): I18nText[] {
 }
 
 function buildModel(p: SeedanceProfile): ModelDef {
+  const modes = buildModes(p);
   return {
     id: p.id,
     providerId: 'byteplus',
@@ -31,8 +33,9 @@ function buildModel(p: SeedanceProfile): ModelDef {
     lifecycle: p.lifecycle,
     badges: badgesOf(p),
     docs: p.docs,
+    ...(SEEDANCE_PROMPT_GUIDES[p.key].length ? { promptGuides: scopeGuides(SEEDANCE_PROMPT_GUIDES[p.key], modes) } : {}),
     endpoints: { submit: 'video.create', get: 'video.get', cancel: 'video.delete', list: 'video.list' },
-    modes: buildModes(p),
+    modes,
     fields: buildFields(p),
     constraints: buildConstraints(p),
     wireGuards: buildGuards(p),

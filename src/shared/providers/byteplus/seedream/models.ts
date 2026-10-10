@@ -7,6 +7,7 @@ import { buildFields } from './fields.js';
 import { estimateSeedreamCost } from './pricing.js';
 import { GROUP_TOTAL_LIMIT, PROFILES, type SeedreamProfile } from './profile.js';
 import { ASPECT_RANGE } from './sizes.js';
+import { SEEDREAM_PROMPT_GUIDES, scopeGuides } from '../prompt-guides.js';
 
 const MAX_INPUT_PIXELS = 36_000_000;
 // 未核实：原文 "Size: Up to 30 MB" 没说 MB 是 10^6 还是 2^20，取较小的 30,000,000 字节
@@ -136,6 +137,7 @@ function buildModes(p: SeedreamProfile): ModeDef[] {
 }
 
 function buildModel(p: SeedreamProfile): ModelDef {
+  const modes = buildModes(p);
   return {
     id: p.id,
     providerId: 'byteplus',
@@ -148,8 +150,9 @@ function buildModel(p: SeedreamProfile): ModelDef {
     kind: 'sync',
     lifecycle: { status: 'active' },
     docs: p.docs,
+    ...(SEEDREAM_PROMPT_GUIDES[p.key].length ? { promptGuides: scopeGuides(SEEDREAM_PROMPT_GUIDES[p.key], modes) } : {}),
     endpoints: p.stream ? { submit: 'image.generate', stream: 'image.stream' } : { submit: 'image.generate' },
-    modes: buildModes(p),
+    modes,
     fields: buildFields(p),
     constraints: buildConstraints(p),
     wireGuards: buildGuards(p),

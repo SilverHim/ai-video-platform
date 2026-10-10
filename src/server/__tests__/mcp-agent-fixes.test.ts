@@ -133,4 +133,17 @@ describe('MCP：agent 实测问题', () => {
     const gen = tools.find((t) => t.name === 'generate_image')!;
     expect(JSON.stringify(gen.inputSchema)).toContain('wait_seconds');
   });
+
+  it('官方提示词指南：get_model_schema 返回 prompt_guides，连接说明提醒先看指南', async () => {
+    s = await serve();
+    expect(s.client.getInstructions()).toContain('prompt_guides');
+    const r = await call(s, 'get_model_schema', { model_id: 'byteplus/seedance-2-5' });
+    const guides = r.data.prompt_guides as { source: string; revision: number; rules: { rule: string; modes?: string[] }[] }[];
+    expect(guides[0]!.source).toContain('seedance-2-5-prompt-guide');
+    expect(guides[0]!.revision).toBeGreaterThan(0);
+    expect(guides[0]!.rules.length).toBeGreaterThan(5);
+    expect(String(r.data.tip)).toContain('prompt_guides');
+    const lite = await call(s, 'get_model_schema', { model_id: 'byteplus/seedream-5-0-lite' });
+    expect(lite.data.prompt_guides).toBeUndefined();
+  });
 });
